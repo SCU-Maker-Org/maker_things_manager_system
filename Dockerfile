@@ -22,4 +22,4 @@ COPY . /app/
 EXPOSE 5000
 
 # 8. 生产环境启动命令：使用 gunicorn 承载 Flask 应用
-CMD ["gunicorn", "-w", "2", "-b", "0.0.0.0:5000", "--access-logfile", "-", "--error-logfile", "-", "app:app"]
+CMD ["gunicorn", "-w", "2", "-b", "0.0.0.0:5000", "--access-logfile", "-", "--error-logfile", "-", "wsgi:app"]

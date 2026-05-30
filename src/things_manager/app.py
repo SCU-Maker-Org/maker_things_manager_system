@@ -5,10 +5,16 @@ from functools import wraps
 import csv
 import io
 import os
+from pathlib import Path
 from werkzeug.security import generate_password_hash, check_password_hash
 
 
-app = Flask(__name__)
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+app = Flask(
+    __name__,
+    instance_path=str(PROJECT_ROOT / 'instance'),
+    instance_relative_config=True,
+)
 
 # 生产环境请通过环境变量 SECRET_KEY 注入随机强密钥
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'dev-only-change-me')
@@ -1012,5 +1018,9 @@ def init_db():
 if os.environ.get('AUTO_INIT_DB', '1') != '0':
     init_db()
 
-if __name__ == '__main__':
+def run_dev_server():
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)), debug=os.environ.get('FLASK_DEBUG') == '1')
+
+
+if __name__ == '__main__':
+    run_dev_server()

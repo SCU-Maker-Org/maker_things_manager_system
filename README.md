@@ -5,7 +5,6 @@
 ## 本地运行
 
 ```bash
-cd things_manage_system_v1.1.1
 python -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
@@ -18,12 +17,26 @@ python app.py
 - 管理员：`admin / 123456`
 - 普通用户：`user1 / 123456`、`user2 / 123456`
 
+## 目录结构
+
+```text
+.
+├── app.py                    # 本地开发兼容入口，支持 python app.py
+├── wsgi.py                   # Gunicorn/生产部署入口
+├── src/things_manager/       # Flask 应用源码包
+├── src/things_manager/app.py # 应用、模型、路由和初始化逻辑
+├── src/things_manager/templates/
+├── instance/                 # SQLite 数据库与运行时数据
+├── Dockerfile
+├── requirements.txt
+└── README.md
+```
+
 ## 生产部署
 
 构建镜像：
 
 ```bash
-cd things_manage_system_v1.1.1
 docker build -t things-system:v1.1.1 .
 ```
 
@@ -51,7 +64,7 @@ docker run -d \
 
 - `SECRET_KEY`：生产环境必须设置随机强密钥。
 - `DATABASE_URL`：可选，默认使用 `sqlite:///storage.db`，数据库文件位于 Flask instance 目录。
-- `PORT`：可选，本地 `python app.py` 启动端口，默认 `5000`。
+- `PORT`：可选，本地 `python app.py` 启动端口，默认 `5000`。生产容器使用 `wsgi:app`。
 - `AUTO_INIT_DB`：可选，默认 `1`。设为 `0` 可跳过启动时自动建表和种子数据初始化。
 
 ## 功能概览
