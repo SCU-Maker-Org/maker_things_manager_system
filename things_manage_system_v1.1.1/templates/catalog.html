@@ -31,7 +31,7 @@
                 
                 {% for main in main_categories %}
                 <div class="relative inline-flex items-center group w-auto md:w-full shrink-0 select-none">
-                    <button onclick="filterMainCategory('{{ main.name }}', this)" class="category-tab w-full text-left px-4 py-2.5 rounded-xl text-xs font-medium text-slate-600 hover:bg-slate-200/60 transition-all whitespace-nowrap" data-target="{{ main.name }}">
+                    <button onclick='filterMainCategory({{ main.name | tojson }}, this)' class="category-tab w-full text-left px-4 py-2.5 rounded-xl text-xs font-medium text-slate-600 hover:bg-slate-200/60 transition-all whitespace-nowrap" data-target="{{ main.name }}">
                         {{ main.name }}
                     </button>
                 </div>
@@ -130,12 +130,12 @@
                             {% if item.stock > 0 and '维修' not in item.status %}
                             <div class="inline-flex items-center justify-center gap-2 w-full" id="wrapper-{{ item.id }}">
                                 <button id="btn-{{ item.id }}" 
-                                        onclick="quickAddToCart('{{ item.id }}', '{{ item.name }}', '{{ item.asset_id }}', {{ item.stock }})"
+                                        onclick='quickAddToCart({{ item.id|string|tojson }}, {{ item.name|tojson }}, {{ item.asset_id|tojson }}, {{ item.stock|tojson }})'
                                         class="text-indigo-600 font-bold hover:underline text-xs flex items-center gap-0.5 focus:outline-none">
                                     <span class="material-symbols-outlined text-sm">add_shopping_cart</span>加暂存箱
                                 </button>
                                 <button id="more-{{ item.id }}"
-                                        onclick="openFormModal('{{ item.id }}', '{{ item.name }}', '{{ item.asset_id }}', {{ item.stock }})"
+                                        onclick='openFormModal({{ item.id|string|tojson }}, {{ item.name|tojson }}, {{ item.asset_id|tojson }}, {{ item.stock|tojson }})'
                                         class="p-1 rounded-lg hover:bg-surface-container-high text-on-surface-variant opacity-60 hover:opacity-100 transition-colors inline-flex items-center justify-center focus:outline-none" 
                                         title="自定义申领多件">
                                     <span class="material-symbols-outlined text-base">more_horiz</span>
@@ -211,10 +211,15 @@
 
 <script>
     // 🌟 核心对接：精准同步后端吐出来的 Python 级联字典矩阵
-    const subCategoryData = JSON.parse('{{ sub_category_data | tojson | safe }}');
+    const subCategoryData = {{ sub_category_data | tojson }};
 
     let activeMainCategoryFilter = 'all';
     let activeSubCategoryFilter = 'all';
+
+    function findCategoryTab(targetName) {
+        return Array.from(document.querySelectorAll('#main-categories-tabs .category-tab'))
+            .find(tab => tab.dataset.target === targetName);
+    }
 
     // ==================== 🌲 一二级目录即时联动引擎 ====================
     function filterMainCategory(mainCatName, element) {
@@ -381,7 +386,11 @@
     function refreshCartUI() {
         const badge = document.getElementById('cart-badge');
         const listContainer = document.getElementById('cart-items-list');
-        if (badge && cart.length > 0) { badge.innerText = cart.length; }
+        if (badge) {
+            badge.innerText = cart.length;
+            badge.classList.toggle('scale-0', cart.length === 0);
+            badge.classList.toggle('scale-100', cart.length > 0);
+        }
 
         document.querySelectorAll('[id^="wrapper-"]').forEach(wrapper => {
             const itemId = wrapper.id.replace('wrapper-', '');
@@ -458,7 +467,7 @@
     // 页面初始化加载挂载点
     window.addEventListener('DOMContentLoaded', () => {
         let savedMain = localStorage.getItem('activeMainCategory') || 'all';
-        const targetBtn = document.querySelector(`#main-categories-tabs .category-tab[data-target="${savedMain}"]`);
+        const targetBtn = findCategoryTab(savedMain);
         if (targetBtn) { filterMainCategory(savedMain, targetBtn); } else { filterMainCategory('all', document.querySelector('.category-tab[data-target="all"]')); }
         refreshCartUI();
     });

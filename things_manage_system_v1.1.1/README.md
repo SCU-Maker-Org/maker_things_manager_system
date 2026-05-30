@@ -1,42 +1,59 @@
-# 物资管理系统 (Things Manage System v1.1.1) 容器化部署说明书
+# 物资管理系统 (Things Manage System v1.1.1)
 
-本系统基于 **Flask + Flask-SQLAlchemy** 架构开发，全面支持 **Docker + Nginx** 工业级容器化弹性部署。
-本次版本已完成全流闭环重构，核心修复了前端 JavaScript 动态 DOM 表单（isEditMode）在新建二级细分类时的路由代差（404 隐患），全面上线了**新用户自主注册、密码 pbkdf2:sha256 强哈希加盐加密机制**以及**分类清洗时资产无损容灾收容机制**。
+基于 Flask + Flask-SQLAlchemy 的物资管理系统，支持用户注册登录、物资目录检索、批量申领、审批流转、归还审核、库存导入导出和 Docker 部署。
 
----
+## 本地运行
 
-## 📂 源码交付目录清单
-部署前请核对根目录下是否包含以下核心生命周期文件：
-- `app.py`：后端路由与身份验证控制总线
-- `templates/`：前端全套交互视图与样式矩阵
-- `Dockerfile`：精简版基础环境装箱说明书
-- `requirements.txt`：Python 全套第三方依赖账本
+```bash
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+python app.py
+```
 
----
+访问地址：`http://127.0.0.1:5000`
 
-## 🛠️ 服务器环境要求
-- 安装有 **Docker Engine** (推荐 20.10 及以上版本)
-- 安装有 **Nginx**（用于公网 80 端口高并发反向代理与物理隔离）
-- 服务器防火墙对内/对外放行端口：`5000` (后端)、`80` (公网访问)
+默认账号：
+- 管理员：`admin / 123456`
+- 普通用户：`user1 / 123456`、`user2 / 123456`
 
----
+## 生产部署
 
-## 运维一键部署
+构建镜像：
 
-请将源码解压至服务器任意工作目录（如 `/home/admin/things_system`），在包含 `Dockerfile` 的根目录下执行以下命令，全自动在本地搬运底座并完成编译：
 ```bash
 docker build -t things-system:v1.1.1 .
+```
 
-为了保障一二级分类标签、账号权限及入库物资数据的绝对安全（防止容器重启或升级时数据被抹除），必须在服务器物理机上创建一个专用的物理存储锚点
+创建持久化数据库目录：
+
+```bash
 mkdir -p /data/things_system/instance
+```
 
-执行以下标准指令启动容器（已配置端口映射、数据卷飞线桥接与生产级自愈重启策略）：
+启动容器：
+
+```bash
 docker run -d \
   -p 5000:5000 \
+  -e SECRET_KEY="$(openssl rand -hex 32)" \
   -v /data/things_system/instance:/app/instance \
   --name things_manage_prod \
   --restart always \
   things-system:v1.1.1
 ```
 
-### 后期可进一步部署nginx ###
+健康检查地址：`http://服务器IP:5000/healthz`
+
+## 关键配置
+
+- `SECRET_KEY`：生产环境必须设置随机强密钥。
+- `DATABASE_URL`：可选，默认使用 `sqlite:///storage.db`，数据库文件位于 Flask instance 目录。
+- `PORT`：可选，本地 `python app.py` 启动端口，默认 `5000`。
+- `AUTO_INIT_DB`：可选，默认 `1`。设为 `0` 可跳过启动时自动建表和种子数据初始化。
+
+## 功能概览
+
+- 管理端：库存入库、分类维护、CSV 导入导出、借用审批、归还核销、低库存和维修状态看板。
+- 用户端：物资目录检索、暂存箱批量申领、额度校验、申请撤回、归还申请、个人借用记录。
+- 安全基础：密码哈希存储、登录态校验、管理员视图隔离、API 会话失效 JSON 响应。

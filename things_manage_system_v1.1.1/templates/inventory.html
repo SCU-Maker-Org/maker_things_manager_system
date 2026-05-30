@@ -49,7 +49,7 @@
         </div>
         <div class="bg-white rounded-2xl border border-outline-variant p-5 shadow-sm flex items-center justify-between">
             <div>
-                <p class="text-xs font-semibold text-on-surface-variant tracking-wider">无库存/缺货筹备</p>
+                <p class="text-xs font-semibold text-on-surface-variant tracking-wider">低库存预警</p>
                 <h3 class="text-2xl font-bold text-amber-600 mt-1">{{ stats.low_stock_count }} <span class="text-xs font-medium text-on-surface-variant">种物资</span></h3>
             </div>
             <div class="w-12 h-12 bg-amber-500/10 rounded-xl flex items-center justify-center text-amber-600">
@@ -118,7 +118,7 @@
                 
                 {% for main in main_categories %}
                 <div class="relative inline-flex items-center group w-auto md:w-full shrink-0 select-none">
-                    <button onclick="filterMainCategory('{{ main.name }}', this)" class="category-tab w-full text-left px-4 py-2.5 rounded-xl text-xs font-medium text-slate-600 hover:bg-slate-200/60 transition-all whitespace-nowrap" data-target="{{ main.name }}">
+                    <button onclick='filterMainCategory({{ main.name | tojson }}, this)' class="category-tab w-full text-left px-4 py-2.5 rounded-xl text-xs font-medium text-slate-600 hover:bg-slate-200/60 transition-all whitespace-nowrap" data-target="{{ main.name }}">
                         {{ main.name }}
                     </button>
                     <form action="{{ url_for('delete_main_category', id=main.id) }}" method="POST" class="edit-actions hidden absolute -top-1 -right-1 md:top-1.5 md:right-2" onsubmit="return confirm('⚠️ 确定移除该大类及其旗下的所有子分类绑定吗？')">
@@ -219,7 +219,7 @@
                         </td>
                         
                         <td class="px-5 py-4 text-right pr-6">
-                            <button onclick="openQuickAdjust('{{ item.id }}', '{{ item.name }}', '{{ item.asset_id }}', '{{ item.category }}', '{{ item.sub_category }}', '{{ item.location }}', '{{ item.stock }}', '{{ item.status }}')" class="text-primary hover:underline font-bold focus:outline-none">精细配置</button>
+                            <button onclick='openQuickAdjust({{ item.id|string|tojson }}, {{ item.name|tojson }}, {{ item.asset_id|tojson }}, {{ item.category|tojson }}, {{ item.sub_category|tojson }}, {{ item.location|tojson }}, {{ item.stock|tojson }}, {{ item.status|tojson }})' class="text-primary hover:underline font-bold focus:outline-none">精细配置</button>
                         </td>
                     </tr>
                     {% else %}
@@ -353,15 +353,16 @@
 </div>
 
 <script>
-    const categoryTreeMatrix = {
-        {% for main in main_categories %}
-        "{{ main.name }}": { id: {{ main.id }}, subs: [ {% for sub in main.sub_categories %} { id: {{ sub.id }}, name: "{{ sub.name }}" }, {% endfor %} ] },
-        {% endfor %}
-    };
+    const categoryTreeMatrix = {{ category_tree_data | tojson }};
 
     let activeMainCategoryFilter = 'all';
     let activeSubCategoryFilter = 'all';
     let isEditMode = false;
+
+    function findCategoryTab(targetName) {
+        return Array.from(document.querySelectorAll('#main-categories-tabs .category-tab'))
+            .find(tab => tab.dataset.target === targetName);
+    }
 
     // ==================== 🌲 一二级大盘联动控制 ====================
     function filterMainCategory(mainCatName, element) {
@@ -478,7 +479,7 @@
             btn.className = "flex items-center gap-1 text-slate-500 hover:text-primary font-bold text-xs transition-colors py-1 px-2.5 rounded-lg border border-transparent hover:border-outline-variant/60 focus:outline-none";
             text.textContent = "修改物资分类"; icon.textContent = "edit_note";
         }
-        const activeTab = document.querySelector(`#main-categories-tabs .category-tab[data-target="${activeMainCategoryFilter}"]`);
+        const activeTab = findCategoryTab(activeMainCategoryFilter);
         if (activeTab) { filterMainCategory(activeMainCategoryFilter, activeTab); }
     }
 
@@ -567,7 +568,7 @@
     window.addEventListener('DOMContentLoaded', () => {
         isEditMode = localStorage.getItem('categoryEditMode') === 'true';
         let savedMain = localStorage.getItem('activeMainCategory') || 'all';
-        const targetBtn = document.querySelector(`#main-categories-tabs .category-tab[data-target="${savedMain}"]`);
+        const targetBtn = findCategoryTab(savedMain);
         if (targetBtn) { filterMainCategory(savedMain, targetBtn); } else { filterMainCategory('all', document.querySelector('.category-tab[data-target="all"]')); }
         applyEditModeUI();
     });

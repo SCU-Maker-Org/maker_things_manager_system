@@ -85,8 +85,8 @@
     class="fixed top-4 left-1/2 -translate-x-1/2 z-50 flex flex-col gap-2 transition-all duration-500 ease-in-out opacity-100 translate-y-0">
     {% for category, message in messages %}
     <div
-      class="px-5 py-3 rounded-xl shadow-xl flex items-center gap-3 backdrop-blur-md {{ 'bg-error-container text-on-error-container border border-error/20' if category == 'error' else 'bg-primary-container text-on-primary-container border border-primary/20' }}">
-      <span class="material-symbols-outlined text-[20px]">{{ 'error' if category == 'error' else 'check_circle'
+      class="px-5 py-3 rounded-xl shadow-xl flex items-center gap-3 backdrop-blur-md {{ 'bg-error-container text-on-error-container border border-error/20' if category == 'error' else ('bg-amber-100 text-amber-800 border border-amber-200' if category == 'warning' else 'bg-primary-container text-on-primary-container border border-primary/20') }}">
+      <span class="material-symbols-outlined text-[20px]">{{ 'error' if category == 'error' else ('warning' if category == 'warning' else 'check_circle')
         }}</span>
       <span class="text-sm font-medium tracking-wide">{{ message }}</span>
 
@@ -247,13 +247,15 @@
         </div>
         <div class="flex items-center space-x-4">
 
-          <button onclick="toggleCartDrawer(true)"
+          {% if view_mode != 'admin' %}
+          <button {% if active_page == 'catalog' %}onclick="toggleCartDrawer(true)"{% else %}onclick="window.location.href='{{ url_for('catalog') }}'"{% endif %}
             class="flex items-center gap-1.5 px-3 py-1.5 hover:bg-surface-container rounded-xl text-xs font-semibold text-on-surface-variant transition-colors relative">
             <span class="material-symbols-outlined text-[20px] text-indigo-600">shopping_basket</span>
             <span class="hidden md:inline">暂存箱</span>
             <span id="cart-badge"
               class="absolute -top-1 -right-1 bg-error text-white text-[9px] w-4 h-4 rounded-full flex items-center justify-center font-extrabold shadow scale-0 transition-transform duration-200">0</span>
           </button>
+          {% endif %}
 
           <button class="p-1.5 rounded-full hover:bg-surface text-on-surface-variant transition-colors">
             <span class="material-symbols-outlined">notifications</span>
