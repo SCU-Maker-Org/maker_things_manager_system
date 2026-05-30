@@ -1,0 +1,161 @@
+{% extends "base.html" %}
+
+{% block title %}登录/注册 - 物资管理系统{% endblock %}
+
+{% block body %}
+<div class="min-h-screen w-screen flex flex-col md:flex-row bg-[#f8fafc] overflow-hidden">
+  
+  <div class="hidden md:flex md:w-1/2 bg-gradient-to-br from-primary to-primary-container p-12 flex-col justify-between relative">
+    <div class="absolute inset-0 opacity-10 bg-[radial-gradient(#fff_1px,transparent_1px)] [background-size:16px_16px]"></div>
+    
+    <div class="flex items-center gap-3 relative z-10">
+      <div class="w-9 h-9 rounded-xl bg-white/20 flex items-center justify-center backdrop-blur">
+        <span class="material-symbols-outlined text-white">inventory_2</span>
+      </div>
+      <span class="text-white font-bold text-lg tracking-wider">THINGS MS v1.1</span>
+    </div>
+
+    <div class="space-y-4 relative z-10 max-w-md">
+      <h2 class="text-3xl font-extrabold text-white leading-tight">高效・严谨・智能<br>全生态物资协同管理平台</h2>
+      <p class="text-white/70 text-sm leading-relaxed">提供多权限级别资产追踪、高闭环审批流水、实时库龄预警与自动化能效图表展示，助力团队实现高效资产沉淀与蜕变。</p>
+    </div>
+
+    <div class="text-white/40 text-xs relative z-10">
+      © 2026 Sichuan University Student Laboratory Group.
+    </div>
+  </div>
+
+  <div class="flex-1 flex items-center justify-center p-6 bg-white relative">
+    
+    <div class="w-full max-w-sm space-y-8 transition-all duration-300 transform scale-100" id="login-box">
+      <div>
+        <h3 class="text-2xl font-extrabold text-on-surface">欢迎登录系统</h3>
+        <p class="text-sm text-on-surface-variant mt-1.5">请使用账号密码进行身份核验</p>
+      </div>
+
+      <form class="space-y-5" action="/" method="POST">
+        <div class="space-y-1.5">
+          <label class="text-xs font-semibold text-on-surface-variant" for="email">账户 / Username</label>
+          <div class="relative">
+            <span class="material-symbols-outlined absolute left-3.5 top-1/2 -translate-y-1/2 text-outline text-lg">person</span>
+            <input class="w-full pl-10 pr-4 py-2.5 bg-surface border border-outline-variant rounded-xl text-sm focus:ring-2 focus:ring-primary focus:bg-white outline-none transition-all" 
+                   id="email" name="email" value="{{ email if email else '' }}" placeholder="管理员请输入 admin" required type="text">
+          </div>
+        </div>
+
+        <div class="space-y-1.5">
+          <label class="text-xs font-semibold text-on-surface-variant" for="password">密码 / Password</label>
+          <div class="relative">
+            <span class="material-symbols-outlined absolute left-3.5 top-1/2 -translate-y-1/2 text-outline text-lg">lock</span>
+            <input class="w-full pl-10 pr-4 py-2.5 bg-surface border border-outline-variant rounded-xl text-sm focus:ring-2 focus:ring-primary focus:bg-white outline-none transition-all" 
+                   id="password" name="password" placeholder="请输入密码 123456" required type="password">
+          </div>
+        </div>
+
+        <div class="flex items-center justify-between text-xs pt-1">
+          <label class="flex items-center gap-2 text-on-surface-variant cursor-pointer select-none">
+            <input class="rounded text-primary focus:ring-primary border-outline-variant w-4 h-4" type="checkbox">
+            记住此密码
+          </label>
+          <a class="text-primary font-medium hover:underline" href="#">忘记密码？</a>
+        </div>
+
+        <button class="w-full py-3 bg-primary text-on-primary rounded-xl font-bold text-sm hover:shadow-lg transition-all active:scale-[0.98] mt-2" type="submit">
+          安全登录
+        </button>
+      </form>
+
+      <div class="text-center text-xs text-on-surface-variant pt-2 select-none">
+        还没有系统账号？<button onclick="toggleFormMode('register')" class="text-primary font-bold hover:underline focus:outline-none">立即自主注册 ❯</button>
+      </div>
+    </div>
+
+
+    <div class="w-full max-w-sm space-y-8 hidden transition-all duration-300 transform scale-95 opacity-0" id="register-box">
+      <div>
+        <h3 class="text-2xl font-extrabold text-on-surface">新用户注册</h3>
+        <p class="text-sm text-on-surface-variant mt-1.5">自主录入信息后，系统将自动下发基础申领授信额度</p>
+      </div>
+
+      <form class="space-y-5" action="/api/register" method="POST">
+        <div class="space-y-1.5">
+          <label class="text-xs font-semibold text-on-surface-variant" for="reg_username">设置账户登录名 / Username</label>
+          <div class="relative">
+            <span class="material-symbols-outlined absolute left-3.5 top-1/2 -translate-y-1/2 text-outline text-lg">badge</span>
+            <input class="w-full pl-10 pr-4 py-2.5 bg-surface border border-outline-variant rounded-xl text-sm focus:ring-2 focus:ring-primary focus:bg-white outline-none transition-all font-mono" 
+                   id="reg_username" name="reg_username" placeholder="如：wancyu" required type="text">
+          </div>
+        </div>
+
+        <div class="space-y-1.5">
+          <label class="text-xs font-semibold text-on-surface-variant" for="reg_full_name">使用者真实姓名 / Full Name</label>
+          <div class="relative">
+            <span class="material-symbols-outlined absolute left-3.5 top-1/2 -translate-y-1/2 text-outline text-lg">person</span>
+            <input class="w-full pl-10 pr-4 py-2.5 bg-surface border border-outline-variant rounded-xl text-sm focus:ring-2 focus:ring-primary focus:bg-white outline-none transition-all" 
+                   id="reg_full_name" name="reg_full_name" placeholder="请输入您的真实姓名" required type="text">
+          </div>
+        </div>
+
+        <div class="space-y-1.5">
+          <label class="text-xs font-semibold text-on-surface-variant" for="reg_password">设置登录密码 / Password</label>
+          <div class="relative">
+            <span class="material-symbols-outlined absolute left-3.5 top-1/2 -translate-y-1/2 text-outline text-lg">lock</span>
+            <input class="w-full pl-10 pr-4 py-2.5 bg-surface border border-outline-variant rounded-xl text-sm focus:ring-2 focus:ring-primary focus:bg-white outline-none transition-all" 
+                   id="reg_password" name="reg_password" placeholder="请妥善设置您的密码" required type="password">
+          </div>
+        </div>
+
+        <div class="flex items-center text-xs pt-1 select-none">
+          <label class="flex items-center gap-2 text-on-surface-variant cursor-pointer">
+            <input class="rounded text-primary focus:ring-primary border-outline-variant w-4 h-4" required type="checkbox">
+            我同意并遵守《团队物资申领守则及信誉管理条例》
+          </label>
+        </div>
+
+        <button class="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold text-sm hover:shadow-lg transition-all active:scale-[0.98] mt-2" type="submit">
+          确认注册
+        </button>
+      </form>
+
+      <div class="text-center text-xs text-on-surface-variant pt-2 select-none">
+        已有系统账号？<button onclick="toggleFormMode('login')" class="text-primary font-bold hover:underline focus:outline-none">❮ 返回账户登录</button>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+  function toggleFormMode(mode) {
+    const loginBox = document.getElementById('login-box');
+    const registerBox = document.getElementById('register-box');
+
+    if (mode === 'register') {
+      // 隐去登录卡片
+      loginBox.classList.add('scale-95', 'opacity-0');
+      setTimeout(() => {
+        loginBox.classList.add('hidden');
+        registerBox.classList.remove('hidden');
+        // 唤醒注册卡片，伴随丝滑的淡入上浮动画
+        setTimeout(() => {
+          registerBox.classList.remove('scale-95', 'opacity-0');
+          registerBox.classList.add('scale-100', 'opacity-100');
+        }, 20);
+      }, 200);
+    } else {
+      // 隐去注册卡片
+      registerBox.classList.remove('scale-100', 'opacity-100');
+      registerBox.classList.add('scale-95', 'opacity-0');
+      setTimeout(() => {
+        registerBox.classList.add('hidden');
+        loginBox.classList.remove('hidden');
+        // 唤醒登录卡片
+        setTimeout(() => {
+          loginBox.classList.remove('scale-95', 'opacity-0');
+          loginBox.classList.add('scale-100', 'opacity-100');
+        }, 20);
+      }, 200);
+    }
+  }
+</script>
+{% endblock %}

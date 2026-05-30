@@ -1,0 +1,253 @@
+{% extends "base.html" %}
+
+{% block title %}审批决策控制台 - 物资管理系统{% endblock %}
+
+{% block header_title %}审批决策控制台{% endblock %}
+
+{% block extra_head %}
+<style>
+    .no-scrollbar::-webkit-scrollbar { display: none; }
+    .custom-scrollbar::-webkit-scrollbar { width: 4px; }
+    .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(0, 0, 0, 0.05); border-radius: 99px; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="w-full space-y-6">
+
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div class="bg-white p-6 rounded-2xl border border-outline-variant shadow-sm relative overflow-hidden group">
+            <div class="flex justify-between items-start mb-4">
+                <div class="w-12 h-12 bg-amber-500/10 text-amber-600 rounded-xl flex items-center justify-center">
+                    <span class="material-symbols-outlined text-2xl">pending_actions</span>
+                </div>
+                <span class="text-slate-500 text-xs font-bold tracking-wider">待处理单据</span>
+            </div>
+            <div class="flex items-baseline gap-1">
+                <h3 class="text-3xl font-extrabold text-on-surface">{{ stats.total_categories }}</h3>
+                <span class="text-xs font-bold text-slate-400">单急需人工介入签批</span>
+            </div>
+        </div>
+
+        <div class="bg-white p-6 rounded-2xl border border-outline-variant shadow-sm relative overflow-hidden group">
+            <div class="flex justify-between items-start mb-4">
+                <div class="w-12 h-12 bg-emerald-500/10 text-emerald-600 rounded-xl flex items-center justify-center">
+                    <span class="material-symbols-outlined text-2xl">task_alt</span>
+                </div>
+                <span class="text-slate-500 text-xs font-bold tracking-wider">本日已归档</span>
+            </div>
+            <div class="flex items-baseline gap-1">
+                <h3 class="text-3xl font-extrabold text-on-surface">{{ stats.total_items }}</h3>
+                <span class="text-xs font-bold text-slate-400">单今日已完成决策</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="bg-white rounded-xl border border-outline-variant shadow-sm p-4 flex flex-col md:flex-row items-center justify-between gap-4 w-full">
+        <div class="flex bg-slate-100 p-1 rounded-xl w-full md:w-auto overflow-x-auto no-scrollbar" id="audit-status-tabs">
+            <button onclick="switchAuditTab('all', this)" class="status-tab px-5 py-1.5 rounded-lg text-xs font-bold bg-white text-primary shadow-sm transition-all whitespace-nowrap">全部历史</button>
+            <button onclick="switchAuditTab('待处理', this)" class="status-tab px-5 py-1.5 rounded-lg text-xs font-medium text-slate-600 hover:text-on-surface transition-all whitespace-nowrap">待处理</button>
+            <button onclick="switchAuditTab('进行中', this)" class="status-tab px-5 py-1.5 rounded-lg text-xs font-medium text-slate-600 hover:text-on-surface transition-all whitespace-nowrap">借用中</button>
+            <button onclick="switchAuditTab('已归还', this)" class="status-tab px-5 py-1.5 rounded-lg text-xs font-medium text-slate-600 hover:text-on-surface transition-all whitespace-nowrap">已还库</button>
+            <button onclick="switchAuditTab('已拒绝', this)" class="status-tab px-5 py-1.5 rounded-lg text-xs font-medium text-slate-600 hover:text-on-surface transition-all whitespace-nowrap">已驳回</button>
+        </div>
+
+        <div class="relative w-full md:max-w-xs">
+            <span class="material-symbols-outlined absolute left-3 top-2.5 text-slate-400 text-base">search</span>
+            <input type="text" id="table-search" oninput="executeClientSearch()" placeholder="搜请求单号、申请人全称、资产名称..." class="w-full bg-slate-50 border border-outline-variant rounded-xl pl-9 pr-4 py-2 text-xs outline-none focus:border-primary transition-colors">
+        </div>
+    </div>
+
+    <section class="bg-white rounded-xl border border-outline-variant shadow-sm overflow-hidden w-full">
+        <div class="overflow-x-auto w-full">
+            <table class="w-full text-left border-collapse text-xs">
+                <thead>
+                    <tr class="bg-slate-50 text-slate-500 font-semibold border-b border-outline-variant text-xs">
+                        <th class="px-6 py-4 w-44">请求单号</th>
+                        <th class="px-6 py-4 w-44">申请人</th>
+                        <th class="px-6 py-4 w-28">单据类型</th>
+                        <th class="px-6 py-4">申领物资清单 (批次合并)</th>
+                        <th class="px-6 py-4 w-44">申请时间</th>
+                        <th class="px-6 py-4 w-32">当前全局状态</th>
+                        <th class="px-6 py-4 text-center pr-8 w-44">核心事务控制</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-outline-variant" id="audit-table-body">
+                    {% for record in items_list %}
+                    <tr class="hover:bg-surface/50 transition-colors audit-data-row" 
+                        id="row-record-{{ record.id }}"
+                        data-status="{{ record.status }}">
+                        
+                        <td class="px-6 py-4 font-mono font-bold text-slate-700">#REQ-2026-00{{ record.id }}</td>
+                        
+                        <td class="px-6 py-4">
+                            <div class="flex items-center gap-2.5">
+                                <div class="w-7 h-7 rounded-full bg-primary-fixed-dim border border-outline-variant shadow-sm flex items-center justify-center font-bold text-primary text-[10px]">
+                                    {{ record.borrower.full_name[0] if record.borrower and record.borrower.full_name else 'U' }}
+                                </div>
+                                <span class="font-bold text-on-surface row-user-name">{{ record.borrower.full_name if record.borrower else '未知用户' }}</span>
+                            </div>
+                        </td>
+                        
+                        <td class="px-6 py-4">
+                            {% if record.status == '待归还审核' or record.status == '已归还' %}
+                                <span class="px-2.5 py-0.5 rounded-md text-[10px] font-black bg-purple-50 border border-purple-100 text-purple-600">归还单</span>
+                            {% else %}
+                                <span class="px-2.5 py-0.5 rounded-md text-[10px] font-black bg-blue-50 border border-blue-100 text-primary">借用单</span>
+                            {% endif %}
+                        </td>
+                        
+                        <td class="px-6 py-4">
+                            <div class="flex flex-col gap-1.5 max-w-md custom-scrollbar overflow-y-auto max-h-24 py-1">
+                                {% if record.details %}
+                                    {% for detail in record.details %}
+                                    <div class="flex items-center justify-between bg-slate-50 border border-slate-200/40 rounded-lg p-2 text-[11px] gap-4">
+                                        <span class="text-slate-700 font-bold truncate row-asset-name">{{ detail.item.name }}</span>
+                                        <span class="px-1.5 py-0.2 bg-indigo-50 border border-indigo-100 text-indigo-600 font-extrabold rounded-md text-[10px] shrink-0">× {{ detail.quantity }} 件</span>
+                                    </div>
+                                    {% endfor %}
+                                {% else %}
+                                    <div class="flex items-center justify-between bg-slate-50 border border-slate-200/40 rounded-lg p-2 text-[11px] gap-4">
+                                        <span class="text-slate-700 font-bold truncate row-asset-name">{{ record.item.name if record.item else '未知物资' }}</span>
+                                        <span class="px-1.5 py-0.2 bg-indigo-50 border border-indigo-100 text-indigo-600 font-extrabold rounded-md text-[10px] shrink-0">× 1 件</span>
+                                    </div>
+                                {% endif %}
+                            </div>
+                        </td>
+                        
+                        <td class="px-6 py-4 font-medium text-slate-400 font-mono">
+                            {{ record.borrow_date.strftime('%Y-%m-%d %H:%M') if record.borrow_date else '2026-05-29 09:00' }}
+                        </td>
+                        
+                        <td class="px-6 py-4 row-status-badge">
+                            {% if record.status == '等待审批' %}
+                                <span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-700 inline-flex items-center gap-0.5">
+                                    <span class="w-1 h-1 rounded-full bg-amber-500 animate-ping"></span>待借出审批
+                                </span>
+                            {% elif record.status == '待归还审核' %}
+                                <span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-100 text-purple-700 inline-flex items-center gap-0.5">
+                                    <span class="w-1 h-1 rounded-full bg-purple-500 animate-pulse"></span>待归还审核
+                                </span>
+                            {% elif record.status == '已拒绝' %}
+                                <span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-500">已驳回</span>
+                            {% elif record.status == '已归还' %}
+                                <span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-50 border border-blue-100 text-blue-600">已归还</span>
+                            {% else %}
+                                <span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-700">🟢 借用中</span>
+                            {% endif %}
+                        </td>
+                        
+                        <td class="px-6 py-4 text-right pr-8">
+                            {% if record.status == '等待审批' %}
+                                <div class="flex items-center justify-end gap-2">
+                                    <form action="{{ url_for('handle_audit', id=record.id) }}" method="POST" class="inline" onsubmit="return confirm('确认批准物资出库申请单吗？')">
+                                        <input type="hidden" name="action" value="进行中">
+                                        <button type="submit" class="text-emerald-600 font-bold hover:underline focus:outline-none">同意借出</button>
+                                    </form>
+                                    <span class="text-slate-300">|</span>
+                                    <form action="{{ url_for('handle_audit', id=record.id) }}" method="POST" class="inline" onsubmit="return confirm('确定要驳回此申领单据吗？')">
+                                        <input type="hidden" name="action" value="已拒绝">
+                                        <button type="submit" class="text-rose-600 font-bold hover:underline focus:outline-none">拒绝</button>
+                                    </form>
+                                </div>
+                            {% elif record.status == '待归还审核' %}
+                                <div class="flex items-center justify-end gap-2">
+                                    <form action="{{ url_for('handle_audit', id=record.id) }}" method="POST" class="inline" onsubmit="return confirm('确认物资完好，办理核销入库吗？')">
+                                        <input type="hidden" name="action" value="已归还">
+                                        <button type="submit" class="text-indigo-600 font-bold hover:underline focus:outline-none">确认入库</button>
+                                    </form>
+                                    <span class="text-slate-300">|</span>
+                                    <form action="{{ url_for('handle_audit', id=record.id) }}" method="POST" class="inline" onsubmit="return confirm('确认资产有损/缺失，强行驳回并恢复其持用责任吗？')">
+                                        <input type="hidden" name="action" value="进行中">
+                                        <button type="submit" class="text-amber-600 font-bold hover:underline focus:outline-none">异常驳回</button>
+                                    </form>
+                                </div>
+                            {% else %}
+                                <span class="text-slate-400 font-medium italic select-none">已归档</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="7" class="px-6 py-12 text-center text-slate-400 font-medium">暂无相关的审批审核流水单据。</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </section>
+</div>
+
+<script>
+    let currentStatusFilter = '待处理'; // 🌟 默认高亮切换到“待处理大盘”，体验极佳
+
+    function switchAuditTab(targetStatus, element) {
+        document.querySelectorAll('#audit-status-tabs .status-tab').forEach(t => t.className = "status-tab px-5 py-1.5 rounded-lg text-xs font-medium text-slate-600 hover:text-on-surface transition-all whitespace-nowrap");
+        element.className = "status-tab px-5 py-1.5 rounded-lg text-xs font-bold bg-white text-primary shadow-sm transition-all whitespace-nowrap";
+        currentStatusFilter = targetStatus;
+        executeClientSearch();
+    }
+
+    function executeClientSearch() {
+        const query = document.getElementById('table-search').value.toLowerCase().trim();
+        const rows = document.querySelectorAll('#audit-table-body .audit-data-row');
+        let visibleCount = 0;
+
+        rows.forEach(row => {
+            const rowStatus = row.getAttribute('data-status');
+            const userName = row.querySelector('.row-user-name').textContent.toLowerCase();
+            const reqNum = row.querySelector('td:first-child').textContent.toLowerCase();
+            
+            // 拼接这一行里所有绑定的物资名称文本
+            let assetNames = "";
+            row.querySelectorAll('.row-asset-name').forEach(el => assetNames += el.textContent.toLowerCase());
+
+            // 核心对齐线：判断当前单据状态是否命中了过滤 Tab 的射程
+            let statusMatch = false;
+            if (currentStatusFilter === 'all') {
+                statusMatch = true; 
+            } else if (currentStatusFilter === '待处理') {
+                // 🔥 核心关键修复：只要是“待处理”，同时放行【借出审批】和【归还审核】，绝不误杀！
+                statusMatch = (rowStatus === '等待审批' || rowStatus === '待归还审核');
+            } else {
+                statusMatch = (rowStatus === currentStatusFilter);
+            }
+
+            // 模糊文本检索匹配
+            const textMatch = (!query || userName.includes(query) || reqNum.includes(query) || assetNames.includes(query));
+
+            if (statusMatch && textMatch) {
+                row.style.display = ''; 
+                visibleCount++;
+            } else { 
+                row.style.display = 'none'; 
+            }
+        });
+
+        // 兜底空白行
+        const noDataRow = document.getElementById('table-no-data-row');
+        if (visibleCount === 0) {
+            if (!noDataRow) {
+                const tbody = document.getElementById('audit-table-body');
+                const tr = document.createElement('tr'); 
+                tr.id = 'table-no-data-row';
+                tr.innerHTML = `<td colspan="7" class="px-6 py-12 text-center text-slate-400 font-medium"><span class="material-symbols-outlined text-2xl block mb-1 opacity-40">inventory</span>当前筛选条件下找不到对应的任何单据数据。</td>`;
+                tbody.appendChild(tr);
+            }
+        } else if (noDataRow) { 
+            noDataRow.remove(); 
+        }
+    }
+
+    // 页面初始化完成后的动作挂载点
+    window.addEventListener('DOMContentLoaded', () => {
+        // 默认让页面加载完成后激活“待处理大盘”选项卡，自动清洗流，不会发生闪现消失
+        const defaultTab = document.querySelector('#audit-status-tabs button:nth-child(2)');
+        if (defaultTab) {
+            switchAuditTab('待处理', defaultTab);
+        } else {
+            executeClientSearch();
+        }
+    });
+</script>
+{% endblock %}

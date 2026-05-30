@@ -1,0 +1,193 @@
+{% extends "base.html" %}
+
+{% block title %}个人仪表盘 - 物资管理系统{% endblock %}
+
+{% block content %}
+<div class="grid grid-cols-12 gap-6 w-full">
+    
+    <div class="col-span-12 lg:col-span-8 space-y-6">
+        
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div class="bg-primary-container/10 border border-primary/20 rounded-xl p-5 flex flex-col items-center text-center">
+                <div class="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center mb-2">
+                    <span class="material-symbols-outlined text-primary">shopping_bag</span>
+                </div>
+                <p class="text-on-surface-variant text-xs uppercase tracking-wider mb-0.5">正在借用</p>
+                <h3 class="text-xl font-bold text-primary">{{ my_active_count }} 件</h3>
+            </div>
+            <div class="bg-amber-500/10 border border-amber-500/20 rounded-xl p-5 flex flex-col items-center text-center">
+                <div class="w-10 h-10 rounded-full bg-amber-500/10 flex items-center justify-center mb-2">
+                    <span class="material-symbols-outlined text-amber-600">hourglass_empty</span>
+                </div>
+                <p class="text-on-surface-variant text-xs uppercase tracking-wider mb-0.5">待审批</p>
+                <h3 class="text-xl font-bold text-amber-600">{{ my_pending_count }} 项</h3>
+            </div>
+            <div class="bg-error-container/40 border border-error/20 rounded-xl p-5 flex flex-col items-center text-center">
+                <div class="w-10 h-10 rounded-full bg-error/10 flex items-center justify-center mb-2">
+                    <span class="material-symbols-outlined text-error">event_busy</span>
+                </div>
+                <p class="text-on-surface-variant text-xs uppercase tracking-wider mb-0.5">逾期未还</p>
+                <h3 class="text-xl font-bold text-error">
+                    {{ my_borrows | selectattr('status', 'equalto', '逾期未还') | list | length }} 件
+                </h3>
+            </div>
+        </div>
+
+        <div class="bg-white rounded-xl border border-outline-variant shadow-sm flex flex-col overflow-hidden">
+            <div class="px-6 py-4 border-b border-outline-variant flex justify-between items-center">
+                <h3 class="font-bold text-base">我的借用动态</h3>
+                <button class="text-primary text-xs hover:underline flex items-center font-medium">
+                    查看完整历史 <span class="material-symbols-outlined text-[16px] ml-1">arrow_forward</span>
+                </button>
+            </div>
+            <div class="overflow-x-auto">
+                <table class="w-full text-left text-sm">
+                    <thead class="bg-surface border-b border-outline-variant text-on-surface-variant font-medium">
+                        <tr>
+                            <th class="px-6 py-3">物品名称</th>
+                            <th class="px-6 py-3">借用日期</th>
+                            <th class="px-6 py-3">预计归还</th>
+                            <th class="px-6 py-3">状态</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-outline-variant">
+                        {% for record in my_borrows %}
+                        <tr class="hover:bg-surface/50 transition-colors">
+                            <td class="px-6 py-4 flex items-center">
+                                <div class="w-9 h-9 rounded bg-surface-container-highest flex items-center justify-center mr-3">
+                                    <span class="material-symbols-outlined text-on-surface-variant">
+                                        {{ 'monitor' if '显示器' in record.item.name else 'devices' }}
+                                    </span>
+                                </div>
+                                <div>
+                                    <p class="font-semibold text-on-surface">{{ record.item.name }}</p>
+                                    <p class="text-[11px] text-on-surface-variant">资产编号: {{ record.item.asset_id }}</p>
+                                </div>
+                            </td>
+                            <td class="px-6 py-4 text-on-surface-variant">{{ record.borrow_date.strftime('%m月%d日') }}</td>
+                            <td class="px-6 py-4 text-on-surface-variant">
+                                {{ record.return_date.strftime('%m月%d日') if record.return_date else '未限定' }}
+                            </td>
+                            <td class="px-6 py-4">
+                                {% if record.status == '进行中' %}
+                                    <span class="px-2.5 py-0.5 rounded-full bg-primary/10 text-primary text-xs font-medium">进行中</span>
+                                {% elif record.status == '等待审批' %}
+                                    <span class="px-2.5 py-0.5 rounded-full bg-secondary-container text-secondary text-xs font-medium">等待审批</span>
+                                {% elif record.status == '已完成' %}
+                                    <span class="px-2.5 py-0.5 rounded-full bg-surface-container-highest text-on-surface-variant text-xs font-medium">已完成</span>
+                                {% else %}
+                                    <span class="px-2.5 py-0.5 rounded-full bg-error-container/40 text-error text-xs font-medium">{{ record.status }}</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr>
+                            <td colspan="4" class="px-6 py-10 text-center text-on-surface-variant opacity-60">
+                                您当前暂无任何借用物资记录。
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="space-y-3">
+            <div class="flex justify-between items-center">
+                <h3 class="font-bold text-base">资源快速浏览</h3>
+                <button class="text-primary text-xs hover:underline font-medium">浏览全部</button>
+            </div>
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div class="bg-white border border-outline-variant rounded-xl p-4 flex flex-col items-center text-center hover:shadow-md transition-all group cursor-pointer">
+                    <div class="w-10 h-10 rounded-full bg-surface flex items-center justify-center mb-2 group-hover:bg-primary/10 transition-colors">
+                        <span class="material-symbols-outlined text-on-surface-variant group-hover:text-primary">laptop_mac</span>
+                    </div>
+                    <p class="text-sm font-medium">办公电子</p>
+                </div>
+                <div class="bg-white border border-outline-variant rounded-xl p-4 flex flex-col items-center text-center hover:shadow-md transition-all group cursor-pointer">
+                    <div class="w-10 h-10 rounded-full bg-surface flex items-center justify-center mb-2 group-hover:bg-primary/10 transition-colors">
+                        <span class="material-symbols-outlined text-on-surface-variant group-hover:text-primary">chair</span>
+                    </div>
+                    <p class="text-sm font-medium">人体工学椅</p>
+                </div>
+                <div class="bg-white border border-outline-variant rounded-xl p-4 flex flex-col items-center text-center hover:shadow-md transition-all group cursor-pointer">
+                    <div class="w-10 h-10 rounded-full bg-surface flex items-center justify-center mb-2 group-hover:bg-primary/10 transition-colors">
+                        <span class="material-symbols-outlined text-on-surface-variant group-hover:text-primary">photo_camera</span>
+                    </div>
+                    <p class="text-sm font-medium">摄影器材</p>
+                </div>
+                <div class="bg-white border border-outline-variant rounded-xl p-4 flex flex-col items-center text-center hover:shadow-md transition-all group cursor-pointer">
+                    <div class="w-10 h-10 rounded-full bg-surface flex items-center justify-center mb-2 group-hover:bg-primary/10 transition-colors">
+                        <span class="material-symbols-outlined text-on-surface-variant group-hover:text-primary">more_horiz</span>
+                    </div>
+                    <p class="text-sm font-medium">更多类别</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-span-12 lg:col-span-4 space-y-6">
+        <div class="bg-primary/5 border border-primary/10 rounded-xl p-5 relative overflow-hidden">
+            <h3 class="font-bold text-base mb-4">借用人概况</h3>
+            <div class="space-y-4 text-sm">
+                <div class="flex justify-between items-center">
+                    <span class="text-on-surface-variant">借用权限等级</span>
+                    <span class="font-bold text-primary px-2 py-0.5 bg-primary/10 rounded text-xs">
+                        {{ 'L1 - 基础用户' if user_info.quota_limit <= 10 else 'L2 - 高级用户' }}
+                    </span>
+                </div>
+                <div class="space-y-1.5">
+                    <div class="flex justify-between items-center text-xs">
+                        <span class="text-on-surface-variant">本月借用额度</span>
+                        <span class="font-bold">{{ my_active_count }} / {{ user_info.quota_limit }} 件</span>
+                    </div>
+                    <div class="w-full bg-surface-container-highest h-1.5 rounded-full overflow-hidden">
+                        <div class="bg-primary h-full transition-all w-[{{ (my_active_count / user_info.quota_limit * 100) | int }}%]"></div>
+                    </div>
+                </div>
+                <div class="flex justify-between items-center pt-2 border-t border-outline-variant/50">
+                    <span class="text-on-surface-variant">信誉评分</span>
+                    <div class="flex items-center {% if user_info.credit_score < 90 %}text-error{% else %}text-emerald-600{% endif %} font-bold">
+                        <span class="material-symbols-outlined text-[16px] mr-1">verified</span>
+                        {{ user_info.credit_score }}/100
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="space-y-3">
+            <h3 class="font-bold text-base">快捷操作</h3>
+            <a href="{{ url_for('catalog') }}" class="w-full text-left p-4 bg-primary text-on-primary rounded-xl hover:opacity-90 transition-all flex items-center group">
+                <div class="w-10 h-10 rounded-lg bg-white/20 flex items-center justify-center mr-3 group-hover:scale-105 transition-transform">
+                    <span class="material-symbols-outlined text-[24px]">add_circle</span>
+                </div>
+                <div>
+                    <p class="font-bold text-sm">申领新物资</p>
+                    <p class="text-white/70 text-[11px] mt-0.5">立即前往物资目录提交借用</p>
+                </div>
+                <span class="material-symbols-outlined ml-auto text-sm">chevron_right</span>
+            </a>
+            <button class="w-full text-left p-4 bg-white border border-outline-variant rounded-xl hover:bg-surface transition-all flex items-center group">
+                <div class="w-10 h-10 rounded-lg bg-error-container flex items-center justify-center mr-3 group-hover:scale-105 transition-transform">
+                    <span class="material-symbols-outlined text-error text-[24px]">report</span>
+                </div>
+                <div>
+                    <p class="font-bold text-sm text-on-surface">异常/故障上报</p>
+                    <p class="text-on-surface-variant text-[11px] mt-0.5">设备损坏或遗失请及时反馈</p>
+                </div>
+                <span class="material-symbols-outlined ml-auto text-on-surface-variant text-sm">chevron_right</span>
+            </button>
+        </div>
+
+        <div class="bg-surface-container border border-outline-variant rounded-xl p-4 text-xs">
+            <div class="flex items-center mb-2 font-semibold text-on-surface">
+                <span class="material-symbols-outlined mr-1.5 text-[18px]">info</span>使用贴士
+            </div>
+            <p class="text-on-surface-variant leading-relaxed">
+                您的当前权限上限为 {{ user_info.quota_limit }} 件物品。逾期记录将直接扣减您的信用积分，请务必按时归还或在线申请延期。
+            </p>
+        </div>
+    </div>
+
+</div>
+{% endblock %}

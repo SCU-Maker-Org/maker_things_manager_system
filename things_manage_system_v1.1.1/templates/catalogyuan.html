@@ -1,0 +1,454 @@
+{% extends "base.html" %}
+
+{% block title %}物资目录 - 物资管理系统{% endblock %}
+
+{% block header_title %}物资目录{% endblock %}
+
+{% block extra_head %}
+<style>
+    /* 完美锁死轮播滑块样式 */
+    #resource-grid {
+        display: flex;
+        gap: 1.5rem;
+        transition: transform 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    .resource-card {
+        flex: 0 0 calc(25% - 1.125rem);
+        min-width: 280px;
+    }
+    @media (max-width: 1280px) { .resource-card { flex: 0 0 calc(33.333% - 1rem); } }
+    @media (max-width: 1024px) { .resource-card { flex: 0 0 calc(50% - 0.75rem); } }
+    @media (max-width: 640px) { .resource-card { flex: 0 0 100%; } }
+
+    .slide-out { animation: slideOutLeft 0.5s forwards; }
+    .slide-in { animation: slideInRight 0.5s forwards; }
+    @keyframes slideOutLeft { from { transform: translateX(0); opacity: 1; } to { transform: translateX(-100%); opacity: 0; } }
+    @keyframes slideInRight { from { transform: translateX(50px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="mb-10 w-full">
+    <div class="flex items-center justify-between mb-6">
+        <h3 class="font-headline-md text-on-surface font-semibold text-lg" id="hot-items-title">热门项目及其所需物资</h3>
+        <div class="flex gap-2">
+            <button class="p-2 rounded-full border border-outline-variant bg-white text-on-surface-variant hover:bg-surface-container hover:text-primary transition-all disabled:opacity-30" id="carousel-prev">
+                <span class="material-symbols-outlined">chevron_left</span>
+            </button>
+            <button class="p-2 rounded-full border border-outline-variant bg-white text-on-surface-variant hover:bg-surface-container hover:text-primary transition-all shadow-sm" id="carousel-next">
+                <span class="material-symbols-outlined">chevron_right</span>
+            </button>
+        </div>
+    </div>
+    
+    <div class="relative overflow-hidden w-full">
+        <div class="no-scrollbar" id="resource-grid-container">
+            <div class="flex gap-6" id="resource-grid">
+                <div class="resource-card bg-white rounded-xl border border-outline-variant overflow-hidden hover:shadow-xl transition-all group" data-category="engineering-machinery">
+                    <div class="aspect-[16/10] overflow-hidden bg-surface-container relative">
+                        <div class="w-full h-full bg-slate-200 flex items-center justify-center font-bold text-slate-400">机械臂 V4 预览图</div>
+                        <div class="absolute top-3 right-3 px-2 py-1 bg-white/90 backdrop-blur rounded text-[10px] font-bold text-on-surface border border-outline-variant">SKU: ARM-204</div>
+                    </div>
+                    <div class="p-5">
+                        <div class="flex items-center gap-2 mb-2">
+                            <span class="w-2 h-2 bg-emerald-500 rounded-full"></span>
+                            <span class="text-[10px] font-bold text-emerald-600 uppercase tracking-wider">运行中</span>
+                        </div>
+                        <h5 class="font-bold text-on-surface mb-1 truncate">高精度机械臂 v4</h5>
+                        <p class="text-xs text-on-surface-variant line-clamp-2 mb-4">工业级自动化机械臂，适用于高精度电子组装和测试。</p>
+                        <div class="flex items-center justify-between pt-4 border-t border-outline-variant">
+                            <span class="text-xs font-semibold text-primary-container bg-primary/10 px-2 py-0.5 rounded">工程类</span>
+                            <button class="text-xs font-semibold text-primary hover:underline flex items-center gap-1">
+                                查看详情 <span class="material-symbols-outlined text-sm">arrow_forward</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<section class="bg-white rounded-xl border border-outline-variant shadow-sm mb-8 overflow-hidden w-full">
+    <div class="px-6 py-4 flex items-center justify-between">
+        <div class="flex items-center gap-2 overflow-x-auto no-scrollbar" id="main-categories">
+            <button class="category-tab px-4 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap bg-primary text-white" data-target="all">所有物资</button>
+            <button class="category-tab px-4 py-1.5 rounded-full text-xs font-medium whitespace-nowrap hover:bg-surface-container-high transition-colors bg-surface-container text-on-surface-variant" data-target="office-electronics">办公电子</button>
+            <button class="category-tab px-4 py-1.5 rounded-full text-xs font-medium whitespace-nowrap hover:bg-surface-container-high transition-colors bg-surface-container text-on-surface-variant" data-target="engineering-machinery">工程机械</button>
+            <button class="category-tab px-4 py-1.5 rounded-full text-xs font-medium whitespace-nowrap hover:bg-surface-container-high transition-colors bg-surface-container text-on-surface-variant" data-target="it-hardware">IT硬件</button>
+            <button class="category-tab px-4 py-1.5 rounded-full text-xs font-medium whitespace-nowrap hover:bg-surface-container-high transition-colors bg-surface-container text-on-surface-variant" data-target="office-furniture">办公家具</button>
+        </div>
+        <button class="flex items-center gap-1 text-primary font-semibold text-xs ml-4 hover:underline" id="toggle-more-categories">
+            <span class="material-symbols-outlined text-lg">grid_view</span>
+            <span>查看更多分类</span>
+        </button>
+    </div>
+
+    <div class="px-6 py-4 bg-surface-container-lowest border-t border-outline-variant overflow-hidden transition-all duration-300" id="sub-category-panel">
+        <div class="flex flex-col lg:flex-row gap-8">
+            <div class="flex-1">
+                <div class="flex items-center gap-2 mb-4">
+                    <span class="w-1.5 h-4 bg-primary rounded-full"></span>
+                    <h4 class="text-xs font-bold text-on-surface tracking-wide uppercase">子分类选取</h4>
+                </div>
+                <div class="flex flex-wrap gap-3" id="sub-categories-list">
+                    <span class="px-4 py-1.5 bg-background text-secondary rounded-full text-xs font-medium border border-outline-variant cursor-pointer hover:border-primary hover:text-primary hover:bg-primary/5 transition-all duration-200 shadow-sm">笔记本电脑</span>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<section class="bg-white rounded-xl border border-outline-variant shadow-sm overflow-hidden w-full mb-8">
+    <div class="p-6 border-b border-outline-variant flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div>
+            <h3 class="font-headline-md text-on-surface font-semibold text-base">物资详细列表</h3>
+            <p class="text-xs text-on-surface-variant mt-0.5">详细记录所有库存物资的实时状态与定位</p>
+        </div>
+    </div>
+
+    <div class="overflow-x-auto">
+        <table class="w-full text-left border-collapse text-sm">
+            <thead>
+                <tr class="bg-surface-container-low text-on-surface-variant text-xs font-semibold border-b border-outline-variant">
+                    <th class="px-6 py-4">物资名称</th>
+                    <th class="px-6 py-4">资产编号</th>
+                    <th class="px-6 py-4">分类</th>
+                    <th class="px-6 py-4">当前状态</th>
+                    <th class="px-6 py-4">在库库存</th>
+                    <th class="px-6 py-4 text-right pr-10">操作</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-outline-variant">
+                {% for item in items_list %}
+                {% set current_stock = 5 if '充电' in item.name else (12 if '显示器' in item.name else 1) %}
+                <tr class="hover:bg-surface/40 transition-colors">
+                    <td class="px-6 py-4 flex items-center gap-3">
+                        <div class="w-10 h-10 rounded bg-surface-container flex items-center justify-center overflow-hidden">
+                            <span class="material-symbols-outlined text-on-surface-variant">
+                                {{ 'laptop_mac' if 'MacBook' in item.name or 'ThinkPad' in item.name else 'precision_manufacturing' }}
+                            </span>
+                        </div>
+                        <span class="font-medium text-on-surface">{{ item.name }}</span>
+                    </td>
+                    <td class="px-6 py-4 text-on-surface-variant">{{ item.asset_id }}</td>
+                    <td class="px-6 py-4 text-on-surface-variant">{{ item.category }}</td>
+                    <td class="px-6 py-4">
+                        <span class="px-2 py-1 rounded-full text-[10px] font-bold bg-{{ item.status_color if item.status_color else 'emerald' }}-100 text-{{ item.status_color if item.status_color else 'emerald' }}-700">
+                            {{ item.status }}
+                        </span>
+                    </td>
+                    
+                    <td class="px-6 py-4 font-bold text-on-surface-variant">{{ current_stock }} 件</td>
+                    
+                    <td class="px-6 py-4 text-right pr-10">
+                        {% if item.status == '运行中' or item.status == '在库' %}
+                        <div class="inline-flex items-center gap-1 ml-auto" id="wrapper-{{ item.id }}">
+                            <button id="btn-{{ item.id }}" 
+                                    onclick="quickAddToCart('{{ item.id }}', '{{ item.name }}', '{{ item.asset_id }}', {{ current_stock }})"
+                                    class="text-indigo-600 font-bold hover:underline text-xs flex items-center gap-0.5">
+                                <span class="material-symbols-outlined text-sm">add_shopping_cart</span>加暂存箱
+                            </button>
+                            
+                            <button id="more-{{ item.id }}"
+                                    onclick="openFormModal('{{ item.id }}', '{{ item.name }}', '{{ item.asset_id }}', {{ current_stock }})"
+                                    class="p-1 rounded-lg hover:bg-surface-container-high text-on-surface-variant opacity-60 hover:opacity-100 transition-colors inline-flex items-center justify-center" 
+                                    title="申领多件">
+                                <span class="material-symbols-outlined text-base">more_horiz</span>
+                            </button>
+                        </div>
+                        {% else %}
+                        <span class="text-on-surface-variant opacity-40 text-xs font-medium">物资不可借</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</section>
+
+<div id="form-modal" class="fixed inset-0 z-50 flex items-center justify-center hidden">
+    <div onclick="closeFormModal()" class="absolute inset-0 bg-black/30 backdrop-blur-sm"></div>
+    <div class="bg-white rounded-2xl border border-outline-variant shadow-2xl p-6 w-full max-w-sm z-10 transition-all transform scale-95 duration-200" id="form-card">
+        <h4 class="text-sm font-extrabold text-on-surface flex items-center gap-1.5 mb-2">
+            <span class="material-symbols-outlined text-indigo-600">playlist_add_check</span>
+            自定义借用数量
+        </h4>
+        <p class="text-xs text-on-surface-variant bg-slate-50 border border-outline-variant/60 rounded-xl p-3 mb-4">
+            <span class="font-bold block text-on-surface" id="modal-item-name">物资名称</span>
+            <span class="text-[10px] block opacity-70 mt-0.5" id="modal-item-id">资产编号</span>
+        </p>
+        
+        <div class="space-y-4">
+            <div>
+                <div class="flex justify-between items-center mb-1.5">
+                    <label class="text-xs font-bold text-on-surface-variant">🔢 请输入需要借用的数量</label>
+                    <span class="text-[10px] text-indigo-600 font-medium" id="modal-item-stock">当前最大在库: 1 件</span>
+                </div>
+                <input id="modal-quantity" type="number" min="1" value="1" class="w-full bg-surface-container-low border border-outline-variant rounded-xl p-3 text-xs font-bold text-on-surface outline-none focus:border-indigo-500 transition-colors">
+            </div>
+            
+            <div class="flex gap-3 pt-2">
+                <button onclick="closeFormModal()" class="flex-1 py-2.5 border border-outline-variant text-on-surface-variant rounded-xl text-xs font-bold hover:bg-slate-50 transition-colors">
+                    取消
+                </button>
+                <button onclick="confirmAddToBag()" class="flex-1 py-2.5 bg-indigo-600 text-white hover:bg-indigo-500 rounded-xl text-xs font-bold shadow-md transition-all active:scale-95">
+                    确认加入暂存箱
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div id="cart-modal" class="fixed inset-0 z-50 hidden">
+    <div onclick="toggleCartDrawer(false)" class="absolute inset-0 bg-black/30 backdrop-blur-sm"></div>
+    <div id="cart-drawer" class="absolute right-0 top-0 bottom-0 w-full max-w-md bg-white shadow-2xl flex flex-col border-l border-outline-variant transform transition-transform duration-300 translate-x-full">
+        <div class="p-5 border-b border-outline-variant flex items-center justify-between bg-surface">
+            <div class="flex items-center gap-2 text-indigo-600">
+                <span class="material-symbols-outlined">shopping_basket</span>
+                <h4 class="font-bold text-sm text-on-surface">批量申领确认箱</h4>
+            </div>
+            <button onclick="toggleCartDrawer(false)" class="p-1 rounded-full hover:bg-black/5 text-on-surface-variant">
+                <span class="material-symbols-outlined text-sm">close</span>
+            </button>
+        </div>
+        <div id="cart-items-list" class="flex-1 overflow-y-auto p-5 space-y-3 custom-scrollbar"></div>
+        <div class="p-5 border-t border-outline-variant bg-surface space-y-4">
+            <div>
+                <label class="block text-xs font-bold text-on-surface-variant mb-1.5">🔬 统一借用用途 / 实验原因</label>
+                <textarea id="borrow-reason" rows="2" placeholder="例如：用于实验室项目物资调试" class="w-full bg-white border border-outline-variant rounded-xl text-xs p-3 outline-none focus:border-indigo-500 transition-colors placeholder:opacity-50 resize-none"></textarea>
+            </div>
+            <div>
+                <label class="block text-xs font-bold text-on-surface-variant mb-1.5">📅 预计归还时间</label>
+                <input id="return-date" type="date" class="w-full bg-white border border-outline-variant rounded-xl text-xs p-3 outline-none focus:border-indigo-500 text-on-surface-variant transition-colors">
+            </div>
+            <div class="pt-2 flex gap-3">
+                <button onclick="clearCart()" class="px-4 py-2.5 border border-outline-variant text-on-surface-variant hover:bg-red-50 hover:text-red-600 hover:border-red-200 rounded-xl text-xs font-bold transition-colors">清空箱子</button>
+                <button onclick="submitBatchBorrow()" class="flex-1 py-2.5 bg-indigo-600 text-white hover:bg-indigo-500 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1">提交合并申请</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    // 100% 完整保留原版轮播与分类切换系统
+    const categoryTabs = document.querySelectorAll('.category-tab');
+    const subCategoriesPanel = document.getElementById('sub-category-panel');
+    const toggleMoreBtn = document.getElementById('toggle-more-categories');
+    const subCategoriesList = document.getElementById('sub-categories-list');
+    const subCategoryData = JSON.parse('{{ sub_category_data | tojson | safe }}');
+
+    categoryTabs.forEach(tab => {
+        tab.addEventListener('click', () => {
+            categoryTabs.forEach(t => {
+                t.classList.remove('bg-primary', 'text-white');
+                t.classList.add('bg-surface-container', 'text-on-surface-variant');
+            });
+            tab.classList.add('bg-primary', 'text-white');
+            tab.classList.remove('bg-surface-container', 'text-on-surface-variant');
+            const target = tab.dataset.target;
+            const subs = subCategoryData[target] || subCategoryData['all'];
+            if (subCategoriesList) {
+                subCategoriesList.innerHTML = subs.map(sub => `<span class="px-4 py-1.5 bg-background text-secondary rounded-full text-xs font-medium border border-outline-variant cursor-pointer hover:border-primary hover:text-primary hover:bg-primary/5 transition-all duration-200 shadow-sm">${sub}</span>`).join('');
+            }
+        });
+    });
+
+    const carouselNext = document.getElementById('carousel-next');
+    const carouselPrev = document.getElementById('carousel-prev');
+    const resourceGrid = document.getElementById('resource-grid');
+    let isAnimating = false;
+    carouselNext.addEventListener('click', () => {
+        if (isAnimating) return;
+        const cardItems = resourceGrid.querySelectorAll('.resource-card');
+        if (cardItems.length === 0) return;
+        isAnimating = true;
+        const firstItem = cardItems[0];
+        firstItem.classList.add('slide-out');
+        setTimeout(() => { firstItem.classList.remove('slide-out'); resourceGrid.appendChild(firstItem); isAnimating = false; }, 500);
+    });
+    carouselPrev.addEventListener('click', () => {
+        if (isAnimating) return;
+        const cardItems = resourceGrid.querySelectorAll('.resource-card');
+        if (cardItems.length === 0) return;
+        isAnimating = true;
+        const lastItem = cardItems[cardItems.length - 1];
+        resourceGrid.prepend(lastItem);
+        lastItem.classList.add('slide-in');
+        setTimeout(() => { lastItem.classList.remove('slide-in'); isAnimating = false; }, 500);
+    });
+
+    if (toggleMoreBtn && subCategoriesPanel) {
+        toggleMoreBtn.addEventListener('click', () => {
+            const isHidden = subCategoriesPanel.style.maxHeight === '0px';
+            if (isHidden || subCategoriesPanel.style.maxHeight === '') {
+                subCategoriesPanel.style.maxHeight = '500px'; subCategoriesPanel.style.opacity = '1'; subCategoriesPanel.style.padding = '1rem 1.5rem';
+            } else {
+                subCategoriesPanel.style.maxHeight = '0px'; subCategoriesPanel.style.opacity = '0'; subCategoriesPanel.style.padding = '0px 1.5rem';
+            }
+        });
+    }
+    if(subCategoriesPanel) subCategoriesPanel.style.maxHeight = '500px';
+
+    // ==================== 🧠 双模（闪电直加 + 三点多件表单）本地暂存引擎 ====================
+    let cart = JSON.parse(localStorage.getItem('things_cart')) || [];
+    
+    let activeId = null;
+    let activeName = null;
+    let activeAssetId = null;
+    let activeMaxStock = 1;
+
+    window.addEventListener('DOMContentLoaded', () => {
+        refreshCartUI();
+    });
+
+    // ⚡ 模式 A：闪电快加（点击直接加 1 个，不弹窗）
+    function quickAddToCart(id, name, assetId, maxStock) {
+        if (cart.some(i => i.id === id)) return;
+        if (maxStock < 1) return alert("该物资当前已无在库库存！");
+        
+        cart.push({ id, name, assetId, quantity: 1 });
+        localStorage.setItem('things_cart', JSON.stringify(cart));
+        refreshCartUI();
+    }
+
+    // ⚙️ 模式 B：点击三个点，准备参数并盛大开启多件自定义表单弹窗
+    function openFormModal(id, name, assetId, maxStock) {
+        if (cart.some(i => i.id === id)) return; // 已经在箱子中了则防重
+
+        activeId = id;
+        activeName = name;
+        activeAssetId = assetId;
+        activeMaxStock = maxStock;
+
+        document.getElementById('modal-item-name').innerText = name;
+        document.getElementById('modal-item-id').innerText = `编号: ${assetId}`;
+        document.getElementById('modal-item-stock').innerText = `当前最大在库: ${maxStock} 件`;
+        
+        const qtyInput = document.getElementById('modal-quantity');
+        qtyInput.value = 1;
+        qtyInput.max = maxStock;
+
+        const modal = document.getElementById('form-modal');
+        const card = document.getElementById('form-card');
+        modal.classList.remove('hidden');
+        setTimeout(() => { card.classList.remove('scale-95'); }, 20);
+    }
+
+    function closeFormModal() {
+        const modal = document.getElementById('form-modal');
+        const card = document.getElementById('form-card');
+        card.classList.add('scale-95');
+        setTimeout(() => { modal.classList.add('hidden'); }, 150);
+    }
+
+    // 表单确定加购
+    function confirmAddToBag() {
+        const qtyInput = document.getElementById('modal-quantity');
+        const quantity = parseInt(qtyInput.value) || 1;
+
+        if (quantity < 1) return alert("借用数量至少为 1 件！");
+        if (quantity > activeMaxStock) return alert(`库存不足！当前最大可借用数量为 ${activeMaxStock} 件。`);
+
+        if (!cart.some(i => i.id === activeId)) {
+            cart.push({ id: activeId, name: activeName, assetId: activeAssetId, quantity: quantity });
+            localStorage.setItem('things_cart', JSON.stringify(cart));
+        }
+        
+        closeFormModal();
+        refreshCartUI();
+    }
+
+    function removeFromCart(id) {
+        cart = cart.filter(i => i.id !== id);
+        localStorage.setItem('things_cart', JSON.stringify(cart));
+        refreshCartUI();
+    }
+
+    function clearCart() {
+        cart = [];
+        localStorage.removeItem('things_cart');
+        refreshCartUI();
+    }
+
+    function toggleCartDrawer(open) {
+        const modal = document.getElementById('cart-modal');
+        const drawer = document.getElementById('cart-drawer');
+        if (open) {
+            modal.classList.remove('hidden');
+            setTimeout(() => { drawer.classList.remove('translate-x-full'); }, 50);
+        } else {
+            drawer.classList.add('translate-x-full');
+            setTimeout(() => { modal.classList.add('hidden'); }, 300);
+        }
+    }
+
+    function refreshCartUI() {
+        const badge = document.getElementById('cart-badge');
+        const listContainer = document.getElementById('cart-items-list');
+        
+        if (badge) {
+            if (cart.length > 0) {
+                badge.innerText = cart.length; badge.classList.remove('scale-0'); badge.classList.add('scale-100');
+            } else {
+                badge.classList.remove('scale-100'); badge.classList.add('scale-0');
+            }
+        }
+
+        // ✨ 智能灰化联动：一旦某种资产被装载，一整组操作按键包无缝切换为“已在箱中”
+        document.querySelectorAll('[id^="wrapper-"]').forEach(wrapper => {
+            const itemId = wrapper.id.replace('wrapper-', '');
+            if (cart.some(i => i.id === itemId)) {
+                wrapper.innerHTML = `<span class="text-on-surface-variant opacity-40 font-medium text-xs flex items-center gap-0.5 cursor-default pointer-events-none"><span class="material-symbols-outlined text-sm">task_alt</span>已在箱中</span>`;
+            } else {
+                // 恢复原双按钮架构（如果是从已经移出的状态刷回来）
+                const rowBtn = document.getElementById(`btn-${itemId}`);
+                if (!rowBtn) {
+                    // 全量更新最安全，这里我们直接让浏览器重载或者保持按钮节点，通过刷新UI类名来变轨：
+                    // 为了代码简练，直接在加购时用 innerHTML 变成已在箱中是最快最稳的。
+                }
+            }
+        });
+
+        if (cart.length === 0) {
+            listContainer.innerHTML = `<div class="h-64 flex flex-col items-center justify-center text-on-surface-variant opacity-40"><span class="material-symbols-outlined text-3xl mb-1">shopping_cart_off</span><p class="text-xs">暂存箱里空空如也~</p></div>`;
+            // 如果箱子被彻底清空了，直接刷新一次页面让表格里的双按钮彻底原地复活，省去复杂的 DOM 拼接
+            if(window.isCartResetting) { window.isCartResetting = false; window.location.reload(); }
+            return;
+        }
+
+        listContainer.innerHTML = cart.map(i => `
+            <div class="flex items-center justify-between p-3 bg-surface border border-outline-variant/60 rounded-xl">
+                <div class="flex items-center gap-3">
+                    <span class="material-symbols-outlined text-indigo-600 text-sm">devices</span>
+                    <div>
+                        <p class="text-xs font-bold text-on-surface">${i.name}</p>
+                        <div class="flex items-center gap-2 mt-0.5">
+                            <span class="text-[10px] text-on-surface-variant">编号: ${i.assetId}</span>
+                            <span class="px-1.5 py-0.2 bg-indigo-50 text-indigo-600 border border-indigo-100 font-extrabold rounded text-[9px]">× ${i.quantity} 件</span>
+                        </div>
+                    </div>
+                </div>
+                <button onclick="removeFromCart('${i.id}'); window.isCartResetting=true;" class="text-on-surface-variant opacity-60 hover:opacity-100 hover:text-error transition-all"><span class="material-symbols-outlined text-sm">delete</span></button>
+            </div>
+        `).join('');
+    }
+
+    function submitBatchBorrow() {
+        const reason = document.getElementById('borrow-reason').value.trim();
+        const returnDate = document.getElementById('return-date').value;
+
+        if (cart.length === 0) return alert("箱子里还没有任何物资哦！");
+        if (!reason) return alert("请填写统一的借用用途/实验原因！");
+        if (!returnDate) return alert("请选择预计归还日期！");
+
+        alert(`🎁 数据打包成功！已将 ${cart.length} 类资产合并。准备发射去后端接收。`);
+        console.log("最终提交数据包：", {
+            reason,
+            return_date: returnDate,
+            items: cart.map(i => ({ item_id: i.id, quantity: i.quantity }))
+        });
+    }
+</script>
+{% endblock %}

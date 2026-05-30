@@ -1,0 +1,575 @@
+{% extends "base.html" %}
+
+{% block title %}库存管理 - 物资管理系统{% endblock %}
+
+{% block header_title %}库存管理{% endblock %}
+
+{% block extra_head %}
+<style>
+    input[type="number"]::-webkit-inner-spin-button,
+    input[type="number"]::-webkit-outer-spin-button {
+        -webkit-appearance: none;
+        margin: 0;
+    }
+    .no-scrollbar::-webkit-scrollbar { display: none; }
+    .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+    
+    #main-categories-tabs::-webkit-scrollbar,
+    #sub-category-panel::-webkit-scrollbar { width: 4px; height: 4px; }
+    #main-categories-tabs::-webkit-scrollbar-track,
+    #sub-category-panel::-webkit-scrollbar-track { background: transparent; }
+    #main-categories-tabs::-webkit-scrollbar-thumb,
+    #sub-category-panel::-webkit-scrollbar-thumb { background: rgba(0, 0, 0, 0.06); border-radius: 99px; }
+    #main-categories-tabs::-webkit-scrollbar-thumb:hover,
+    #sub-category-panel::-webkit-scrollbar-thumb:hover { background: rgba(0, 0, 0, 0.15); }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="w-full space-y-6">
+    
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 w-full">
+        <div class="bg-white rounded-2xl border border-outline-variant p-5 shadow-sm flex items-center justify-between">
+            <div>
+                <p class="text-xs font-semibold text-on-surface-variant tracking-wider">总物资产类</p>
+                <h3 class="text-2xl font-bold text-on-surface mt-1">{{ stats.total_categories }} <span class="text-xs font-medium text-on-surface-variant">个大类</span></h3>
+            </div>
+            <div class="w-12 h-12 bg-primary/10 rounded-xl flex items-center justify-center text-primary">
+                <span class="material-symbols-outlined text-2xl">account_tree</span>
+            </div>
+        </div>
+        <div class="bg-white rounded-2xl border border-outline-variant p-5 shadow-sm flex items-center justify-between">
+            <div>
+                <p class="text-xs font-semibold text-on-surface-variant tracking-wider">在库总件数</p>
+                <h3 class="text-2xl font-bold text-on-surface mt-1">{{ stats.total_items }} <span class="text-xs font-medium text-on-surface-variant">件</span></h3>
+            </div>
+            <div class="w-12 h-12 bg-emerald-500/10 rounded-xl flex items-center justify-center text-emerald-600">
+                <span class="material-symbols-outlined text-2xl">inventory_2</span>
+            </div>
+        </div>
+        <div class="bg-white rounded-2xl border border-outline-variant p-5 shadow-sm flex items-center justify-between">
+            <div>
+                <p class="text-xs font-semibold text-on-surface-variant tracking-wider">无库存/缺货筹备</p>
+                <h3 class="text-2xl font-bold text-amber-600 mt-1">{{ stats.low_stock_count }} <span class="text-xs font-medium text-on-surface-variant">种物资</span></h3>
+            </div>
+            <div class="w-12 h-12 bg-amber-500/10 rounded-xl flex items-center justify-center text-amber-600">
+                <span class="material-symbols-outlined text-2xl">production_quantity_limits</span>
+            </div>
+        </div>
+        <div class="bg-white rounded-2xl border border-outline-variant p-5 shadow-sm flex items-center justify-between">
+            <div>
+                <p class="text-xs font-semibold text-on-surface-variant tracking-wider">异常挂起设备</p>
+                <h3 class="text-2xl font-bold text-error mt-1">{{ stats.broken_items_count }} <span class="text-xs font-medium text-on-surface-variant">件</span></h3>
+            </div>
+            <div class="w-12 h-12 bg-error/10 rounded-xl flex items-center justify-center text-error">
+                <span class="material-symbols-outlined text-2xl">build</span>
+            </div>
+        </div>
+    </div>
+
+        <div class="bg-white rounded-xl border border-outline-variant shadow-sm p-4 flex flex-col xl:flex-row items-center justify-between gap-4 w-full">
+        <div class="flex flex-col sm:flex-row flex-1 items-center gap-3 w-full">
+            <div class="relative flex-1 w-full">
+                <span class="material-symbols-outlined absolute left-3 top-2.5 text-on-surface-variant text-base">search</span>
+                <input type="text" id="table-search" oninput="executeClientSearch()" placeholder="输入物资名称、资产编号、库位定位实时检索..." class="w-full bg-surface border border-outline-variant rounded-xl pl-9 pr-4 py-2 text-xs outline-none focus:border-primary transition-colors">
+            </div>
+            <div class="w-full sm:w-44">
+                <select id="table-filter-status" onchange="executeClientSearch()" class="w-full bg-surface border border-outline-variant rounded-xl px-3 py-2 text-xs font-bold text-on-surface outline-none focus:border-primary">
+                    <option value="all">📊 全部在库状态</option>
+                    <option value="充足">🟢 库存充足</option>
+                    <option value="无库存">🔴 已无库存</option>
+                    <option value="维修">🛠️ 急需维修</option>
+                </select>
+            </div>
+        </div>
+        
+        <div class="flex items-center flex-wrap gap-2 w-full xl:w-auto justify-end">
+            <form action="/admin/inventory/import" method="POST" enctype="multipart/form-data" class="flex items-center m-0">
+                <label class="cursor-pointer px-4 py-2 bg-slate-100 hover:bg-slate-200 border border-slate-200 text-slate-700 text-xs font-bold rounded-xl flex items-center gap-1.5 transition-all shadow-sm">
+                    <span class="material-symbols-outlined text-base">file_upload</span>表格导入
+                    <input type="file" name="file" accept=".csv" onchange="this.form.submit()" class="hidden">
+                </label>
+            </form>
+            
+            <a href="/admin/inventory/export" class="px-4 py-2 bg-slate-100 hover:bg-slate-200 border border-slate-200 text-slate-700 text-xs font-bold rounded-xl flex items-center gap-1.5 transition-all shadow-sm">
+                <span class="material-symbols-outlined text-base">file_download</span>导出大盘
+            </a>
+            
+            <button onclick="openInboundModal()" class="px-5 py-2 bg-primary text-white hover:bg-primary/90 text-xs font-bold rounded-xl flex items-center gap-1.5 shadow-md transition-all active:scale-95">
+                <span class="material-symbols-outlined text-base">add</span>新物资入库
+            </button>
+        </div>
+    </div>
+
+    
+    <section class="bg-white rounded-2xl border border-outline-variant shadow-sm overflow-hidden w-full flex flex-col md:flex-row md:h-[260px]">
+        
+        <div class="w-full md:w-52 bg-slate-50 border-b md:border-b-0 md:border-r border-outline-variant/60 flex flex-col shrink-0">
+            <div class="px-4 py-3.5 text-sm font-bold text-on-surface tracking-wide uppercase border-b border-outline-variant/30 bg-slate-100/30 shrink-0 select-none">
+                物资大类
+            </div>
+            
+            <div class="flex flex-row md:flex-col overflow-x-auto md:overflow-y-auto p-2 gap-1 flex-1 md:max-h-[210px] no-scrollbar" id="main-categories-tabs">
+                <div class="relative inline-flex items-center w-auto md:w-full select-none shrink-0">
+                    <button onclick="filterMainCategory('all', this)" class="category-tab w-full text-left px-4 py-2.5 rounded-xl text-xs font-bold bg-primary text-white transition-all shadow-sm whitespace-nowrap" data-target="all">
+                        所有物资
+                    </button>
+                </div>
+                
+                {% for main in main_categories %}
+                <div class="relative inline-flex items-center group w-auto md:w-full shrink-0 select-none">
+                    <button onclick="filterMainCategory('{{ main.name }}', this)" class="category-tab w-full text-left px-4 py-2.5 rounded-xl text-xs font-medium text-slate-600 hover:bg-slate-200/60 transition-all whitespace-nowrap" data-target="{{ main.name }}">
+                        {{ main.name }}
+                    </button>
+                    <form action="{{ url_for('delete_main_category', id=main.id) }}" method="POST" class="edit-actions hidden absolute -top-1 -right-1 md:top-1.5 md:right-2" onsubmit="return confirm('⚠️ 确定移除该大类及其旗下的所有子分类绑定吗？')">
+                        <button type="submit" class="w-4 h-4 bg-error text-white rounded-full flex items-center justify-center shadow-md hover:bg-red-600 transition-all hover:scale-110">
+                            <span class="material-symbols-outlined text-[10px] font-black">close</span>
+                        </button>
+                    </form>
+                </div>
+                {% endfor %}
+
+                <form action="{{ url_for('add_main_category') }}" method="POST" onsubmit="localStorage.setItem('activeMainCategory', this.main_category_name.value.trim());" class="edit-actions hidden items-center justify-between gap-2 bg-white border border-dashed border-primary/40 rounded-xl pl-3 pr-1.5 py-1.5 mt-1 mx-0.5 whitespace-nowrap shadow-sm w-auto md:w-full shrink-0">
+                    <input type="text" name="main_category_name" required placeholder="追加新大类..." class="flex-1 min-w-0 bg-transparent text-xs border-none border-0 outline-none font-semibold text-on-surface focus:outline-none focus:ring-0 p-0 m-0">
+                    <button type="submit" class="text-primary flex items-center hover:scale-110 transition-transform focus:outline-none shrink-0"><span class="material-symbols-outlined text-base">add_circle</span></button>
+                </form>
+            </div>
+        </div>
+
+        <div class="flex-1 p-5 bg-white flex flex-col overflow-hidden" id="sub-category-right-box">
+            
+            <div class="flex items-center justify-between border-b border-slate-100 pb-3 mb-4 select-none shrink-0">
+                <div class="flex items-center gap-2">
+                    <span class="w-1.5 h-4 bg-primary rounded-full"></span>
+                    <h4 class="text-sm font-bold text-on-surface tracking-wide">子分类选取</h4>
+                </div>
+                
+                <button onclick="toggleCategoryEditMode()" id="btn-edit-mode" class="flex items-center gap-1 text-slate-500 hover:text-primary font-bold text-xs transition-colors py-1 px-2.5 rounded-lg border border-transparent hover:border-outline-variant/60 focus:outline-none">
+                    <span class="material-symbols-outlined text-base" id="icon-edit-mode">edit_note</span>
+                    <span id="text-edit-mode">修改物资分类</span>
+                </button>
+            </div>
+
+            <div class="overflow-y-auto pr-1 flex-1 md:max-h-[145px]" id="sub-category-panel">
+                <div class="flex flex-wrap gap-2.5 items-center content-start pb-2" id="sub-categories-list"></div>
+            </div>
+
+            <div class="border-b border-slate-100 mt-4 shrink-0 select-none"></div>
+            
+        </div>
+    </section>
+
+
+    <section class="bg-white rounded-xl border border-outline-variant shadow-sm overflow-hidden w-full">
+        <div class="p-5 border-b border-outline-variant">
+            <h3 class="text-sm font-bold text-on-surface">物资详细列表</h3>
+            <p class="text-[11px] text-on-surface-variant mt-0.5">支持通过侧分栏、搜索框、在库状态进行全自动级联检索</p>
+        </div>
+
+        <div class="overflow-x-auto w-full">
+            <table class="w-full text-left border-collapse text-xs">
+                <thead>
+                    <tr class="bg-surface-container-low text-on-surface-variant font-semibold border-b border-outline-variant text-xs">
+                        <th class="px-5 py-3.5 w-20">图片</th>
+                        <th class="px-5 py-3.5">名称</th>
+                        <th class="px-5 py-3.5">编号</th>
+                        <th class="px-5 py-3.5">分类</th>
+                        <th class="px-5 py-3.5">位置</th>
+                        <th class="px-5 py-3.5">数量</th>
+                        <th class="px-5 py-3.5">状态</th>
+                        <th class="px-5 py-3.5 text-right pr-6">操作</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-outline-variant" id="inventory-table-body">
+                    {% for item in items_list %}
+                    <tr class="hover:bg-surface/50 transition-colors data-row" 
+                        id="row-item-{{ item.id }}"
+                        data-main-cat="{{ item.category }}"
+                        data-sub-cat="{{ item.sub_category }}"
+                        data-status-txt="{% if item.stock == 0 %}无库存{% elif '维修' in item.status %}维修{% else %}充足{% endif %}">
+                        
+                        <td class="px-5 py-4">
+                            <div class="w-9 h-9 rounded-xl flex items-center justify-center border {% if item.stock == 0 %}bg-rose-50 border-rose-200 text-rose-600{% else %}bg-blue-50 border-blue-200 text-primary{% endif %}">
+                                <span class="material-symbols-outlined text-lg row-item-icon-txt">
+                                    {{ 'bolt' if '充电' in item.name or '电池' in item.name else ('laptop_mac' if '显示器' in item.name or '笔记本' in item.name or '服务器' in item.name else 'developer_board') }}
+                                </span>
+                            </div>
+                        </td>
+                        
+                        <td class="px-5 py-4 font-bold text-on-surface row-item-name">{{ item.name }}</td>
+                        <td class="px-5 py-4 font-medium text-slate-500 font-mono row-item-asset">{{ item.asset_id }}</td>
+                        
+                        <td class="px-5 py-4">
+                            <span class="text-[10px] bg-blue-50 border border-blue-100 text-primary px-2 py-0.5 rounded-md font-bold whitespace-nowrap">
+                                <span class="row-item-main-cat">{{ item.category }}</span> ❯ <span class="row-item-sub-cat">{{ item.sub_category }}</span>
+                            </span>
+                        </td>
+                        
+                        <td class="px-5 py-4 text-on-surface-variant"><span class="px-1.5 py-0.5 bg-slate-100 rounded border border-slate-200 row-item-loc">{{ item.location }}</span></td>
+                        <td class="px-5 py-4 font-extrabold text-on-surface row-item-stock-txt">{{ item.stock }} 件</td>
+                        
+                        <td class="px-5 py-4" id="status-item-{{ item.id }}">
+                            {% if item.stock == 0 %}
+                                <span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-100 text-rose-700 inline-flex items-center gap-0.5"><span class="w-1 h-1 rounded-full bg-rose-500 animate-ping"></span>无库存</span>
+                            {% elif '维修' in item.status %}
+                                <span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-700">🛠️ 急需维修</span>
+                            {% else %}
+                                <span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-700">🟢 库存充足</span>
+                            {% endif %}
+                        </td>
+                        
+                        <td class="px-5 py-4 text-right pr-6">
+                            <button onclick="openQuickAdjust('{{ item.id }}', '{{ item.name }}', '{{ item.asset_id }}', '{{ item.category }}', '{{ item.sub_category }}', '{{ item.location }}', '{{ item.stock }}', '{{ item.status }}')" class="text-primary hover:underline font-bold focus:outline-none">精细配置</button>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="8" class="px-5 py-12 text-center text-on-surface-variant opacity-50">数据大盘空空如也。</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </section>
+</div>
+
+<div id="inbound-modal" class="fixed inset-0 z-50 flex items-center justify-center hidden">
+    <div onclick="closeInboundModal()" class="absolute inset-0 bg-black/40 backdrop-blur-sm"></div>
+    <div class="bg-white rounded-2xl border border-outline-variant shadow-2xl p-6 w-full max-w-md z-10 transform scale-95 transition-all duration-200" id="inbound-card">
+        <h4 class="text-sm font-extrabold text-on-surface flex items-center gap-1.5 mb-4">
+            <span class="material-symbols-outlined text-primary">add_to_photos</span>新物资全要素入库
+        </h4>
+        <form class="space-y-4" action="{{ url_for('inventory') }}" method="POST">
+            <div>
+                <label class="block text-[11px] font-bold text-on-surface-variant mb-1">物资名称 *</label>
+                <input type="text" name="name" required placeholder="如：大疆无刷电机驱动模块 (CAN-FD版)" class="w-full bg-surface-container-low border border-outline-variant rounded-xl p-2.5 text-xs text-on-surface outline-none focus:border-primary">
+            </div>
+            <div class="grid grid-cols-2 gap-3">
+                <div>
+                    <label class="block text-[11px] font-bold text-on-surface-variant mb-1">所属一级大类 *</label>
+                    <select id="inbound-main-cat" name="category" onchange="syncInboundSubCategories()" class="w-full bg-surface-container-low border border-outline-variant rounded-xl p-2.5 text-xs text-on-surface font-semibold outline-none focus:border-primary">
+                        {% for main in main_categories %} <option value="{{ main.name }}">{{ main.name }}</option> {% endfor %}
+                    </select>
+                    <input type="text" name="new_category_name" placeholder="找不到？在此输入新大类名称" class="w-full text-xs rounded-xl border-outline-variant mt-2 bg-slate-50">
+                </div>
+                <div>
+                    <label class="block text-[11px] font-bold text-on-surface-variant mb-1">所属二级细分 *</label>
+                    <select id="inbound-sub-cat" name="sub_category" class="w-full bg-surface-container-low border border-outline-variant rounded-xl p-2.5 text-xs text-on-surface font-semibold outline-none focus:border-primary"></select>
+                     <input type="text" name="new_sub_category_name" placeholder="找不到？在此输入新小类名称" class="w-full text-xs rounded-xl border-outline-variant mt-2 bg-slate-50">              
+               
+                </div>
+            </div>
+            <div class="grid grid-cols-2 gap-3">
+                <div>
+                    <label class="block text-[11px] font-bold text-on-surface-variant mb-1">资产唯一编号 *</label>
+                    <input type="text" name="asset_id" required placeholder="SCU-2026-XYZ" class="w-full bg-surface-container-low border border-outline-variant rounded-xl p-2.5 text-xs text-on-surface outline-none focus:border-primary">
+                </div>
+                <div>
+                    <label class="block text-[11px] font-bold text-on-surface-variant mb-1">具体存放货架 *</label>
+                    <input type="text" name="location" required placeholder="南区智能实验室 C03柜" class="w-full bg-surface-container-low border border-outline-variant rounded-xl p-2.5 text-xs text-on-surface outline-none focus:border-primary">
+                </div>
+            </div>
+            <div class="grid grid-cols-2 gap-3">
+                <div>
+                    <label class="block text-[11px] font-bold text-on-surface-variant mb-1">初始总库存 *</label>
+                    <input type="number" name="stock" value="10" min="0" class="w-full bg-surface-container-low border border-outline-variant rounded-xl p-2.5 text-xs text-on-surface outline-none focus:border-primary">
+                </div>
+                <div>
+                    <label class="block text-[11px] font-bold text-on-surface-variant mb-1">初始实时状态</label>
+                    <select name="status" class="w-full bg-surface-container-low border border-outline-variant rounded-xl p-2.5 text-xs text-on-surface font-semibold outline-none focus:border-primary">
+                        <option value="库存充足">🟢 库存充足</option>
+                        <option value="急需维修">🛠️ 急需维修</option>
+                    </select>
+                </div>
+            </div>
+            <div class="flex gap-3 pt-2">
+                <button type="button" onclick="closeInboundModal()" class="flex-1 py-2.5 border border-outline-variant text-on-surface-variant rounded-xl font-bold hover:bg-slate-50 transition-colors">取消</button>
+                <button type="submit" class="flex-1 py-2.5 bg-primary text-white hover:bg-primary/90 rounded-xl font-bold shadow-md transition-all active:scale-95">确认入库并保存</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div id="adjust-modal" class="fixed inset-0 z-50 flex items-center justify-center hidden">
+    <div onclick="closeAdjustModal()" class="absolute inset-0 bg-black/40 backdrop-blur-sm"></div>
+    <div class="bg-white rounded-2xl border border-outline-variant shadow-2xl p-6 w-full max-w-md z-10 transform scale-95 transition-all duration-200" id="adjust-card">
+        <div class="flex items-center justify-between mb-4">
+            <h4 class="text-sm font-extrabold text-on-surface flex items-center gap-1.5">
+                <span class="material-symbols-outlined text-indigo-600">tune</span>物资全要素精细配置
+            </h4>
+            <form id="edit-delete-form" action="" method="POST" onsubmit="return confirm('🚨 警告：这会从系统中永久抹除该资产的一切数据流水！确定继续？')">
+                <button type="submit" class="text-error hover:text-red-600 text-xs font-bold flex items-center gap-0.5 border border-red-200 hover:border-red-400 bg-red-50 px-2.5 py-1 rounded-xl transition-all">
+                    <span class="material-symbols-outlined text-sm">delete</span>永久删除
+                </button>
+            </form>
+        </div>
+        
+        <form id="edit-main-form" class="space-y-3" action="" method="POST">
+            <div class="grid grid-cols-2 gap-3">
+                <div>
+                    <label class="block text-[11px] font-bold text-on-surface-variant mb-1">物资全称</label>
+                    <input type="text" id="edit-name" name="name" required class="w-full bg-surface-container-low border border-outline-variant rounded-xl p-2.5 text-xs text-on-surface outline-none focus:border-indigo-500">
+                </div>
+                <div>
+                    <label class="block text-[11px] font-bold text-on-surface-variant mb-1">唯一资产编号</label>
+                    <input type="text" id="edit-asset-id" name="asset_id" required class="w-full bg-surface-container-low border border-outline-variant rounded-xl p-2.5 text-xs text-on-surface outline-none focus:border-indigo-500">
+                </div>
+            </div>
+            <div class="grid grid-cols-2 gap-3">
+                <div>
+                    <label class="block text-[11px] font-bold text-on-surface-variant mb-1">调整一级大类</label>
+                    <select id="edit-main-cat" name="category" onchange="syncEditSubCategories()" class="w-full bg-surface-container-low border border-outline-variant rounded-xl p-2.5 text-xs text-on-surface font-semibold outline-none focus:border-indigo-500">
+                        {% for main in main_categories %} <option value="{{ main.name }}">{{ main.name }}</option> {% endfor %}
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-[11px] font-bold text-on-surface-variant mb-1">调整二级细分</label>
+                    <select id="edit-sub-cat" name="sub_category" class="w-full bg-surface-container-low border border-outline-variant rounded-xl p-2.5 text-xs text-on-surface font-semibold outline-none focus:border-indigo-500"></select>
+                </div>
+            </div>
+            <div class="grid grid-cols-2 gap-3">
+                <div>
+                    <label class="block text-[11px] font-bold text-on-surface-variant mb-1">重设在库实存数量</label>
+                    <input type="number" id="edit-stock" name="stock" min="0" required class="w-full bg-surface-container-low border border-outline-variant rounded-xl p-2.5 text-xs font-bold text-on-surface outline-none focus:border-indigo-500">
+                </div>
+                <div>
+                    <label class="block text-[11px] font-bold text-on-surface-variant mb-1">变更实时物理状态</label>
+                    <select id="edit-status" name="status" class="w-full bg-surface-container-low border border-outline-variant rounded-xl p-2.5 text-xs font-semibold text-on-surface outline-none focus:border-indigo-500">
+                        <option value="库存充足">🟢 库存充足</option>
+                        <option value="急需维修">🛠️ 急需维修</option>
+                    </select>
+                </div>
+            </div>
+            <div>
+                <label class="block text-[11px] font-bold text-on-surface-variant mb-1">重新指定存放货位定位</label>
+                <input id="edit-location" name="location" type="text" required class="w-full bg-surface-container-low border border-outline-variant rounded-xl p-2.5 text-xs font-bold text-on-surface outline-none focus:border-indigo-500">
+            </div>
+            <div class="flex gap-3 pt-3">
+                <button type="button" onclick="closeAdjustModal()" class="flex-1 py-2.5 border border-outline-variant text-on-surface-variant rounded-xl font-bold hover:bg-slate-50 transition-colors">取消</button>
+                <button type="submit" class="flex-1 py-2.5 bg-indigo-600 text-white hover:bg-indigo-500 rounded-xl font-bold shadow-md transition-all active:scale-95">提交并更新核心资产</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+    const categoryTreeMatrix = {
+        {% for main in main_categories %}
+        "{{ main.name }}": { id: {{ main.id }}, subs: [ {% for sub in main.sub_categories %} { id: {{ sub.id }}, name: "{{ sub.name }}" }, {% endfor %} ] },
+        {% endfor %}
+    };
+
+    let activeMainCategoryFilter = 'all';
+    let activeSubCategoryFilter = 'all';
+    let isEditMode = false;
+
+    // ==================== 🌲 一二级大盘联动控制 ====================
+    function filterMainCategory(mainCatName, element) {
+        const tabs = document.querySelectorAll('#main-categories-tabs .category-tab');
+        tabs.forEach(t => t.className = "category-tab w-full text-left px-4 py-2.5 rounded-xl text-xs font-medium text-slate-600 hover:bg-slate-200/50 transition-all whitespace-nowrap");
+        element.className = "category-tab w-full text-left px-4 py-2.5 rounded-xl text-xs font-bold bg-primary text-white transition-all shadow-sm whitespace-nowrap";
+
+        activeMainCategoryFilter = mainCatName; activeSubCategoryFilter = 'all'; 
+        localStorage.setItem('activeMainCategory', mainCatName);
+
+        const subContainer = document.getElementById('sub-categories-list');
+        subContainer.innerHTML = '';
+
+        if (mainCatName === 'all') {
+            let allSubs = []; let seenNames = new Set();
+            for (const mainKey in categoryTreeMatrix) {
+                categoryTreeMatrix[mainKey].subs.forEach(sub => {
+                    if (!seenNames.has(sub.name)) { seenNames.add(sub.name); allSubs.push(sub); }
+                });
+            }
+            if (allSubs.length === 0) {
+                subContainer.innerHTML = `<span class="text-xs text-slate-400 italic py-1.5">系统内暂无任何子分类标签。</span>`;
+            } else {
+                const allSubBtn = document.createElement('button');
+                allSubBtn.className = "sub-badge px-5 py-2 rounded-xl text-xs font-bold bg-primary/10 text-primary border border-primary/20 shadow-sm cursor-pointer transition-all";
+                allSubBtn.textContent = "全部"; allSubBtn.onclick = function() { selectSubCategory('all', this); };
+                subContainer.appendChild(allSubBtn);
+
+                allSubs.forEach(sub => {
+                    const badgeWrapper = document.createElement('div');
+                    badgeWrapper.className = "inline-flex items-center gap-2 bg-slate-100 border border-slate-200/60 rounded-xl px-5 py-2 text-xs font-medium text-slate-700 shadow-sm relative transition-all duration-200";
+                    const textSpan = document.createElement('span');
+                    textSpan.className = "sub-badge cursor-pointer hover:text-primary font-medium tracking-wide";
+                    textSpan.textContent = sub.name; textSpan.onclick = function() { selectSubCategory(sub.name, textSpan); };
+                    badgeWrapper.appendChild(textSpan); subContainer.appendChild(badgeWrapper);
+                });
+            }
+        } else {
+            const mainData = categoryTreeMatrix[mainCatName] || { subs: [] };
+            const availableSubs = mainData.subs;
+
+            if (availableSubs.length === 0 && !isEditMode) {
+                subContainer.innerHTML = `<span class="text-xs text-slate-400 italic py-1.5">该大类下暂未配置二级子分类。</span>`;
+            } else {
+                if (availableSubs.length > 0) {
+                    const allSubBtn = document.createElement('button');
+                    allSubBtn.className = "sub-badge px-5 py-2 rounded-xl text-xs font-bold bg-primary/10 text-primary border border-primary/20 shadow-sm cursor-pointer transition-all";
+                    allSubBtn.textContent = "全部"; allSubBtn.onclick = function() { selectSubCategory('all', this); };
+                    subContainer.appendChild(allSubBtn);
+                }
+                availableSubs.forEach(sub => {
+                    const badgeWrapper = document.createElement('div');
+                    badgeWrapper.className = "inline-flex items-center gap-2 bg-slate-100 border border-slate-200/60 rounded-xl px-5 py-2 text-xs font-medium text-slate-700 shadow-sm relative transition-all duration-200";
+                    const textSpan = document.createElement('span');
+                    textSpan.className = "sub-badge cursor-pointer hover:text-primary font-medium tracking-wide";
+                    textSpan.textContent = sub.name; textSpan.onclick = function() { selectSubCategory(sub.name, textSpan); };
+                    badgeWrapper.appendChild(textSpan);
+
+                    if (isEditMode) {
+                        badgeWrapper.classList.add('pr-2.5');
+                        const delForm = document.createElement('form');
+                        delForm.action = `/admin/sub-category/delete/${sub.id}`; delForm.method = 'POST';
+                        delForm.className = 'inline-flex items-center ml-1 pl-1.5 border-l border-slate-300/60';
+                        delForm.onsubmit = function() { return confirm(`确定永久移除二级分类【${sub.name}】吗？`); };
+                        delForm.innerHTML = `<button type="submit" class="text-error hover:text-red-500 font-bold flex items-center"><span class="material-symbols-outlined text-sm">close</span></button>`;
+                        badgeWrapper.appendChild(delForm);
+                    }
+                    subContainer.appendChild(badgeWrapper);
+                });
+            }
+            if (isEditMode) {
+                const addSubForm = document.createElement('form');
+                addSubForm.action = "/admin/sub-category/add"; addSubForm.method = "POST";
+                addSubForm.className = "inline-flex items-center gap-2 bg-white border border-dashed border-primary/50 rounded-xl pl-4 pr-2 py-1.5 whitespace-nowrap shadow-sm";
+                addSubForm.onsubmit = function() { localStorage.setItem('activeMainCategory', mainCatName); };
+                addSubForm.innerHTML = `
+                    <input type="hidden" name="main_category_id" value="${mainData.id}">
+                    <input type="text" name="sub_category_name" required placeholder="+ 新增子分类" class="bg-transparent text-xs border-none border-0 outline-none p-0 m-0 w-24 font-bold text-primary placeholder-primary/60 focus:outline-none focus:ring-0">
+                    <button type="submit" class="text-primary flex items-center hover:scale-110 transition-transform focus:outline-none"><span class="material-symbols-outlined text-base font-bold">add_circle</span></button>
+                `;
+                subContainer.appendChild(addSubForm);
+            }
+        }
+        executeClientSearch();
+    }
+
+    function selectSubCategory(subCatName, element) {
+        const badges = document.querySelectorAll('#sub-categories-list .sub-badge');
+        badges.forEach(b => {
+            const parent = b.parentElement;
+            if(parent.classList.contains('inline-flex')){
+                parent.className = "inline-flex items-center gap-2 bg-slate-100 border border-slate-200/60 rounded-xl px-5 py-2 text-xs font-medium text-slate-700 shadow-sm relative transition-all duration-200";
+            } else { b.className = "sub-badge px-5 py-2 rounded-xl text-xs font-medium bg-slate-100 border border-slate-200/60 text-slate-700 transition-all"; }
+        });
+        const parentDiv = element.parentElement;
+        if(parentDiv && parentDiv.classList.contains('inline-flex')){
+            parentDiv.className = "inline-flex items-center gap-2 bg-blue-50 border-2 border-blue-500 text-blue-600 rounded-xl px-5 py-1.5 text-xs font-bold shadow-sm relative transition-all duration-200";
+        } else { element.className = "sub-badge px-5 py-2 rounded-xl text-xs font-bold bg-primary/10 text-primary border border-primary/20 shadow-sm cursor-pointer transition-all"; }
+        activeSubCategoryFilter = subCatName; executeClientSearch();
+    }
+
+    function toggleCategoryEditMode() { isEditMode = !isEditMode; localStorage.setItem('categoryEditMode', isEditMode); applyEditModeUI(); }
+
+    antiBorderBug = null;
+    function applyEditModeUI() {
+        const editActions = document.querySelectorAll('.edit-actions');
+        const btn = document.getElementById('btn-edit-mode'); const text = document.getElementById('text-edit-mode'); const icon = document.getElementById('icon-edit-mode');
+        if (isEditMode) {
+            editActions.forEach(el => { el.classList.remove('hidden'); if(el.tagName === 'FORM') el.classList.add('inline-flex'); });
+            btn.className = "flex items-center gap-1 text-white font-bold text-xs bg-emerald-600 hover:bg-emerald-500 px-3 py-1.5 rounded-xl transition-all active:scale-95 shrink-0 shadow-sm";
+            text.textContent = "退出分类编辑"; icon.textContent = "check_circle";
+        } else {
+            editActions.forEach(el => { el.classList.add('hidden'); if(el.tagName === 'FORM') el.classList.remove('inline-flex'); });
+            btn.className = "flex items-center gap-1 text-slate-500 hover:text-primary font-bold text-xs transition-colors py-1 px-2.5 rounded-lg border border-transparent hover:border-outline-variant/60 focus:outline-none";
+            text.textContent = "修改物资分类"; icon.textContent = "edit_note";
+        }
+        const activeTab = document.querySelector(`#main-categories-tabs .category-tab[data-target="${activeMainCategoryFilter}"]`);
+        if (activeTab) { filterMainCategory(activeMainCategoryFilter, activeTab); }
+    }
+
+    // ==================== 🔍 ✨ 核心修复点：采用标准 // 注释的四维匹配过滤大盘 ====================
+    function executeClientSearch() {
+        const query = document.getElementById('table-search').value.toLowerCase().trim();
+        const statusFilter = document.getElementById('table-filter-status').value; // 👈 完美修复点：替换为JS行内标准注释
+        const rows = document.querySelectorAll('#inventory-table-body .data-row');
+        let visibleCount = 0;
+
+        rows.forEach(row => {
+            const rowMain = row.getAttribute('data-main-cat');
+            const rowSub = row.getAttribute('data-sub-cat');
+            const rowStatus = row.getAttribute('data-status-txt'); // 充足/无库存/维修
+            
+            const name = row.querySelector('.row-item-name').textContent.toLowerCase();
+            const asset = row.querySelector('.row-item-asset').textContent.toLowerCase();
+            const loc = row.querySelector('.row-item-loc').textContent.toLowerCase();
+
+            const mainMatch = (activeMainCategoryFilter === 'all' || rowMain === activeMainCategoryFilter);
+            const subMatch = (activeSubCategoryFilter === 'all' || rowSub === activeSubCategoryFilter);
+            const statusMatch = (statusFilter === 'all' || rowStatus === statusFilter); // 👈 完美修复点：四维状态比对红线
+            const textMatch = (!query || name.includes(query) || asset.includes(query) || loc.includes(query));
+
+            if (mainMatch && subMatch && statusMatch && textMatch) {
+                row.style.display = ''; visibleCount++;
+            } else { row.style.display = 'none'; }
+        });
+
+        const noDataRow = document.getElementById('table-no-data-row');
+        if (visibleCount === 0) {
+            if (!noDataRow) {
+                const tbody = document.getElementById('inventory-table-body');
+                const tr = document.createElement('tr'); tr.id = 'table-no-data-row';
+                tr.innerHTML = `<td colspan="8" class="px-5 py-12 text-center text-slate-400 font-medium"><span class="material-symbols-outlined text-2xl block mb-1 opacity-40">inventory</span>✨ 抱歉，当前多维检索条件下找不到对应的物料数据。</td>`;
+                tbody.appendChild(tr);
+            }
+        } else if (noDataRow) { noDataRow.remove(); }
+    }
+
+    // ==================== 📥 下拉级联渲染器 ====================
+    function syncInboundSubCategories() {
+        const mainSelect = document.getElementById('inbound-main-cat'); const subSelect = document.getElementById('inbound-sub-cat');
+        if (!mainSelect || !subSelect) return;
+        const availableSubs = (categoryTreeMatrix[mainSelect.value] || { subs: [] }).subs; subSelect.innerHTML = '';
+        if (availableSubs.length === 0) {
+            subSelect.innerHTML = '<option value="通用">通用</option>';
+        } else { availableSubs.forEach(sub => subSelect.innerHTML += `<option value="${sub.name}">${sub.name}</option>`); }
+    }
+
+    function syncEditSubCategories(selectedSubName = null) {
+        const mainSelect = document.getElementById('edit-main-cat'); const subSelect = document.getElementById('edit-sub-cat');
+        if (!mainSelect || !subSelect) return;
+        const availableSubs = (categoryTreeMatrix[mainSelect.value] || { subs: [] }).subs; subSelect.innerHTML = '';
+        if (availableSubs.length === 0) {
+            subSelect.innerHTML = '<option value="通用">通用</option>';
+        } else { availableSubs.forEach(sub => subSelect.innerHTML += `<option value="${sub.name}" ${selectedSubName === sub.name ? 'selected' : ''}>${sub.name}</option>`); }
+    }
+
+    // ==================== 🛠️ 模态框显隐驱动中心 ====================
+    function openInboundModal() {
+        document.getElementById('inbound-modal').classList.remove('hidden');
+        setTimeout(() => { document.getElementById('inbound-card').classList.remove('scale-95'); }, 20);
+        syncInboundSubCategories();
+    }
+    function closeInboundModal() { document.getElementById('inbound-card').classList.add('scale-95'); setTimeout(() => { document.getElementById('inbound-modal').classList.add('hidden'); }, 150); }
+
+    function openQuickAdjust(id, name, assetId, category, subCategory, location, stock, status) {
+        document.getElementById('edit-name').value = name;
+        document.getElementById('edit-asset-id').value = assetId;
+        document.getElementById('edit-main-cat').value = category;
+        document.getElementById('edit-location').value = location;
+        document.getElementById('edit-stock').value = stock;
+        document.getElementById('edit-status').value = status.includes('维修') ? '急需维修' : '库存充足';
+        
+        document.getElementById('edit-main-form').action = `/admin/item/edit/${id}`;
+        document.getElementById('edit-delete-form').action = `/admin/item/delete/${id}`;
+
+        syncEditSubCategories(subCategory);
+
+        document.getElementById('adjust-modal').classList.remove('hidden');
+        setTimeout(() => { document.getElementById('adjust-card').classList.remove('scale-95'); }, 20);
+    }
+    function closeAdjustModal() { document.getElementById('adjust-card').classList.add('scale-95'); setTimeout(() => { document.getElementById('adjust-modal').classList.add('hidden'); }, 150); }
+
+    window.addEventListener('DOMContentLoaded', () => {
+        isEditMode = localStorage.getItem('categoryEditMode') === 'true';
+        let savedMain = localStorage.getItem('activeMainCategory') || 'all';
+        const targetBtn = document.querySelector(`#main-categories-tabs .category-tab[data-target="${savedMain}"]`);
+        if (targetBtn) { filterMainCategory(savedMain, targetBtn); } else { filterMainCategory('all', document.querySelector('.category-tab[data-target="all"]')); }
+        applyEditModeUI();
+    });
+</script>
+{% endblock %}
