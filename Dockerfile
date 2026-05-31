@@ -21,5 +21,5 @@ COPY . /app/
 # 7. 暴露出 Flask 默认的 5000 端口
 EXPOSE 5000
 
-# 8. 生产环境启动命令（这里使用标准的 gunicorn 或直接用 python app.py 启动）
-CMD ["python", "app.py"]
+# 8. 生产环境启动命令：使用 gunicorn 承载 Flask 应用
+CMD ["gunicorn", "-w", "2", "-b", "0.0.0.0:5000", "--access-logfile", "-", "--error-logfile", "-", "wsgi:app"]

@@ -1,18 +1,28 @@
 from flask import Flask, render_template, request, flash, redirect, url_for, session, jsonify, make_response
 from flask_sqlalchemy import SQLAlchemy
 from datetime import datetime, timedelta
+from functools import wraps
 import csv
 import io
+import os
+from pathlib import Path
 from werkzeug.security import generate_password_hash, check_password_hash
 
 
-app = Flask(__name__)
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+app = Flask(
+    __name__,
+    instance_path=str(PROJECT_ROOT / 'instance'),
+    instance_relative_config=True,
+)
 
-# 🔑 设置秘钥，有了它 session 才能正常工作，用来在浏览器 Cookie 里加密存状态
-app.secret_key = 'super_secret_key_for_testing'
-
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///storage.db'
+# 生产环境请通过环境变量 SECRET_KEY 注入随机强密钥
+app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'dev-only-change-me')
+app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL', 'sqlite:///storage.db')
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+app.config['SESSION_COOKIE_HTTPONLY'] = True
+app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
+app.config['MAX_CONTENT_LENGTH'] = 5 * 1024 * 1024  # CSV 导入最大 5MB
 db = SQLAlchemy(app)
 
 # ==================== 🛠️ 原生无损兼容的 SQLite 数据库模型 ====================
@@ -93,18 +103,134 @@ class BorrowDetail(db.Model):
 
 # ==================== 🐍 路由与身份分流控制 ====================
 
+def current_user():
+    user_id = session.get('user_id')
+    return db.session.get(User, user_id) if user_id else None
+
+
+def is_api_request():
+    return request.path.startswith('/api/') or request.is_json
+
+
+def login_required(view):
+    @wraps(view)
+    def wrapped(*args, **kwargs):
+        user = current_user()
+        if not user:
+            session.clear()
+            if is_api_request():
+                return jsonify({'success': False, 'msg': '登录会话失效，请重新登录系统！'}), 401
+            flash('请先登录后再访问系统。', 'error')
+            return redirect(url_for('login'))
+        session['role'] = user.role
+        session.setdefault('view_mode', user.role)
+        return view(*args, **kwargs)
+    return wrapped
+
+
+def admin_required(view):
+    @wraps(view)
+    def wrapped(*args, **kwargs):
+        user = current_user()
+        if not user or user.role != 'admin' or session.get('view_mode') == 'user':
+            if is_api_request():
+                return jsonify({'success': False, 'msg': '您无权执行该管理员操作！'}), 403
+            flash('安全拦截：您无权访问管理员后台。', 'error')
+            return redirect(url_for('user_dashboard') if user else url_for('login'))
+        return view(*args, **kwargs)
+    return wrapped
+
+
+def parse_non_negative_int(value, default=0):
+    try:
+        number = int(value)
+        return number if number >= 0 else default
+    except (TypeError, ValueError):
+        return default
+
+
+def parse_positive_int(value):
+    try:
+        number = int(value)
+        return number if number > 0 else None
+    except (TypeError, ValueError):
+        return None
+
+
+def normalize_item_state(item):
+    if item.stock <= 0:
+        item.stock = 0
+        item.status = '无库存'
+        item.status_color = 'error'
+    elif '维修' in (item.status or ''):
+        item.status = '急需维修'
+        item.status_color = 'error'
+    else:
+        item.status = '库存充足'
+        item.status_color = 'emerald'
+
+
+def record_total_quantity(record):
+    if record.details:
+        return sum(parse_non_negative_int(detail.quantity, 0) for detail in record.details)
+    return 1
+
+
+def user_reserved_quantity(user_id):
+    active_statuses = ['等待审批', '进行中', '待归还审核']
+    records = BorrowRecord.query.filter(
+        BorrowRecord.user_id == user_id,
+        BorrowRecord.status.in_(active_statuses)
+    ).all()
+    return sum(record_total_quantity(record) for record in records)
+
+
+def build_category_tree():
+    tree = {}
+    for main in MainCategory.query.order_by(MainCategory.name.asc()).all():
+        tree[main.name] = {
+            'id': main.id,
+            'subs': [
+                {'id': sub.id, 'name': sub.name}
+                for sub in sorted(main.sub_categories, key=lambda sub: sub.name)
+            ]
+        }
+    return tree
+
+
+def decode_csv_upload(file_storage):
+    raw = file_storage.stream.read()
+    for encoding in ('utf-8-sig', 'utf-8', 'gb18030'):
+        try:
+            return raw.decode(encoding)
+        except UnicodeDecodeError:
+            continue
+    raise ValueError('无法识别 CSV 编码，请使用 UTF-8 或 GBK/GB18030 编码保存后重试')
+
+
+@app.route('/healthz')
+def healthz():
+    return jsonify({'status': 'ok', 'time': datetime.now().isoformat(timespec='seconds')})
+
 # ==================== 🐍 身份验证流（登录与安全注册） ====================
 
 @app.route('/', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
-        email = request.form.get('email')
-        password = request.form.get('password')
+        email = request.form.get('email', '').strip()
+        password = request.form.get('password', '')
         user = User.query.filter_by(username=email).first()
         
-        # 🌟 核心安全修复：使用 check_password_hash 进行密文哈希比对
-        if user and (check_password_hash(user.password, password) or user.password == password): 
-            # 注：后面的 'or user.password == password' 是为了兼容你 init_db 里写死的明文老测试账号 '123456'
+        password_ok = False
+        if user:
+            password_ok = check_password_hash(user.password, password) if user.password.startswith(('pbkdf2:', 'scrypt:')) else (user.password == password)
+
+        if user and password_ok:
+            # 兼容并自动升级历史明文密码
+            if not user.password.startswith(('pbkdf2:', 'scrypt:')):
+                user.password = generate_password_hash(password, method='pbkdf2:sha256', salt_length=16)
+                db.session.commit()
+            session.clear()
             session['user_id'] = user.id
             session['role'] = user.role
             session['view_mode'] = user.role 
@@ -129,6 +255,9 @@ def register():
 
     if not username or not password or not full_name:
         flash('注册失败：请完整填写所有必填信息！', 'error')
+        return redirect(url_for('login'))
+    if len(password) < 6:
+        flash('注册失败：密码长度至少 6 位！', 'error')
         return redirect(url_for('login'))
 
     # 1. 查重机制：防止账户名发生碰撞
@@ -161,8 +290,10 @@ def register():
 
 
 @app.route('/switch-mode')
+@login_required
 def switch_mode():
-    if session.get('role') != 'admin':
+    user = current_user()
+    if user.role != 'admin':
         flash('您不是管理员，无法切换视图模式！', 'error')
         return redirect(url_for('user_dashboard'))
     
@@ -177,19 +308,17 @@ def switch_mode():
 
 
 @app.route('/admin/dashboard')
+@admin_required
 def admin_dashboard():
-    if session.get('view_mode') == 'user':
-        return redirect(url_for('user_dashboard'))
-
-    total_items = Item.query.count()
+    total_items = db.session.query(db.func.sum(Item.stock)).scalar() or 0
+    user_count = User.query.count()
     active_borrows = BorrowRecord.query.filter_by(status='进行中').count()
     pending_approvals = BorrowRecord.query.filter(BorrowRecord.status.in_(['等待审批', '待归还审核'])).count()
     error_items = Item.query.filter_by(status='急需维修').count()
 
     recent_borrows = BorrowRecord.query.order_by(BorrowRecord.borrow_date.desc()).limit(5).all()
     users_list = User.query.filter_by(role='user').order_by(User.credit_score.asc()).limit(4).all()
-    
-    admin_info = db.session.get(User, session.get('user_id', 1))
+    admin_info = current_user()
     
     return render_template(
         'admin_dashboard.html',
@@ -197,6 +326,7 @@ def admin_dashboard():
         user_info=admin_info,
         view_mode=session.get('view_mode'), 
         total_items=total_items,
+        user_count=user_count,
         active_borrows=active_borrows,
         pending_approvals=pending_approvals,
         error_items=error_items,
@@ -206,11 +336,14 @@ def admin_dashboard():
 
 
 @app.route('/user/dashboard')
+@login_required
 def user_dashboard():
-    current_user_id = session.get('user_id', 2) 
-    user_info = db.session.get(User, current_user_id)
-    my_active_count = BorrowRecord.query.filter_by(user_id=current_user_id, status='进行中').count()
+    user_info = current_user()
+    current_user_id = user_info.id
+    active_records = BorrowRecord.query.filter_by(user_id=current_user_id, status='进行中').all()
+    my_active_count = sum(record_total_quantity(record) for record in active_records)
     my_pending_count = BorrowRecord.query.filter_by(user_id=current_user_id, status='等待审批').count()
+    quota_used = user_reserved_quantity(current_user_id)
     my_borrows = BorrowRecord.query.filter_by(user_id=current_user_id).order_by(BorrowRecord.borrow_date.desc()).limit(5).all()
 
     return render_template(
@@ -220,13 +353,14 @@ def user_dashboard():
         view_mode=session.get('view_mode'), 
         my_active_count=my_active_count,
         my_pending_count=my_pending_count,
+        quota_used=quota_used,
         my_borrows=my_borrows
     )
 
 @app.route('/catalog')
+@login_required
 def catalog():
-    current_user_id = session.get('user_id', 2)
-    user_info = db.session.get(User, current_user_id)
+    user_info = current_user()
     
     items_from_db = Item.query.all()
     main_categories = MainCategory.query.all()
@@ -254,12 +388,11 @@ def catalog():
 
 # ✨✨ 核心对接：处理前端批量加购合并提交的 API 异步接收中心 ✨✨
 @app.route('/api/borrow/submit', methods=['POST'])
+@login_required
 def submit_batch_borrow():
-    current_user_id = session.get('user_id')
-    if not current_user_id: 
-        return jsonify({'success': False, 'msg': '登录会话失效，请重新登录系统！'}), 401
+    user = current_user()
         
-    data = request.get_json()
+    data = request.get_json(silent=True)
     if not data:
         return jsonify({'success': False, 'msg': '未接收到有效的数据传输包！'}), 400
 
@@ -267,18 +400,60 @@ def submit_batch_borrow():
     return_date_str = data.get('return_date')
     cart_items = data.get('items', [])
 
-    if not reason or not return_date_str or not cart_items:
+    if not reason or not return_date_str or not isinstance(cart_items, list) or not cart_items:
         return jsonify({'success': False, 'msg': '合并失败：请补全用途事由或预计归还日期！'}), 400
+    if len(reason) > 500:
+        return jsonify({'success': False, 'msg': '借用用途请控制在 500 字以内。'}), 400
+    if len(cart_items) > 50:
+        return jsonify({'success': False, 'msg': '单次合并申请最多支持 50 类物资。'}), 400
 
     try:
         return_date = datetime.strptime(return_date_str, '%Y-%m-%d')
-        
-        # 抓取第一件物资的 ID 用作老模型 item_id 的强制无损抗瘫痪兼容垫底
-        fallback_item_id = int(cart_items[0].get('item_id'))
+        if return_date.date() < datetime.now().date():
+            return jsonify({'success': False, 'msg': '预计归还日期不能早于今天！'}), 400
+
+        requested_quantities = {}
+        for chunk in cart_items:
+            if not isinstance(chunk, dict):
+                return jsonify({'success': False, 'msg': '申请明细格式不正确。'}), 400
+            item_id = parse_positive_int(chunk.get('item_id'))
+            req_qty = parse_positive_int(chunk.get('quantity', 1))
+            if not item_id or not req_qty:
+                return jsonify({'success': False, 'msg': '物资 ID 或申请数量不合法。'}), 400
+            requested_quantities[item_id] = requested_quantities.get(item_id, 0) + req_qty
+
+        total_requested = sum(requested_quantities.values())
+        reserved_quantity = user_reserved_quantity(user.id)
+        if reserved_quantity + total_requested > user.quota_limit:
+            remaining_quota = max(user.quota_limit - reserved_quantity, 0)
+            return jsonify({
+                'success': False,
+                'msg': f'申请数量超过当前额度，剩余可申请 {remaining_quota} 件。'
+            }), 400
+
+        requested_item_ids = list(requested_quantities.keys())
+        items = Item.query.filter(Item.id.in_(requested_item_ids)).all()
+        items_by_id = {item.id: item for item in items}
+        missing_ids = [str(item_id) for item_id in requested_quantities if item_id not in items_by_id]
+        if missing_ids:
+            return jsonify({'success': False, 'msg': f'以下物资不存在或已下架：{", ".join(missing_ids)}'}), 400
+
+        for item_id, req_qty in requested_quantities.items():
+            target_item = items_by_id[item_id]
+            if '维修' in (target_item.status or ''):
+                return jsonify({'success': False, 'msg': f'【{target_item.name}】处于维修状态，暂不可申领。'}), 400
+            if target_item.stock < req_qty:
+                return jsonify({
+                    'success': False,
+                    'msg': f'【{target_item.name}】库存水位告急，剩余可借 {target_item.stock} 件'
+                }), 400
+
+        # 抓取第一件物资的 ID 用作老模型 item_id 的强制无损兼容垫底
+        fallback_item_id = next(iter(requested_quantities))
 
         # 录入借用单主表记录
         new_record = BorrowRecord(
-            user_id=current_user_id, 
+            user_id=user.id,
             item_id=fallback_item_id, 
             reason=reason, 
             return_date=return_date, 
@@ -288,17 +463,7 @@ def submit_batch_borrow():
         db.session.flush() 
 
         # 循环灌入明细子表
-        for chunk in cart_items:
-            item_id = int(chunk.get('item_id'))
-            req_qty = int(chunk.get('quantity', 1))
-            
-            target_stock = db.session.get(Item, item_id)
-            if not target_stock or target_stock.stock < req_qty:
-                return jsonify({
-                    'success': False, 
-                    'msg': f'【{target_stock.name if target_stock else item_id}】库存水位告急，剩余可借 {target_stock.stock if target_stock else 0} 件'
-                }), 400
-            
+        for item_id, req_qty in requested_quantities.items():
             db.session.add(BorrowDetail(
                 record_id=new_record.id, 
                 item_id=item_id, 
@@ -313,6 +478,7 @@ def submit_batch_borrow():
         return jsonify({'success': False, 'msg': f'系统底层异常: {str(e)}'}), 500
 
 @app.route('/borrow', methods=['GET'])
+@login_required
 def borrow():
     """
     我的借用：用户中央控制流水看板视图（加入防 None 崩溃托底机制）
@@ -351,6 +517,7 @@ def borrow():
     )
 
 @app.route('/api/borrow/revoke/<int:id>', methods=['POST'])
+@login_required
 def revoke_borrow(id):
     """
     异步撤回接口：允许用户在管理员审批前自主拦截申请
@@ -376,6 +543,7 @@ def revoke_borrow(id):
 
 
 @app.route('/api/borrow/return/<int:id>', methods=['POST'])
+@login_required
 def return_borrow(id):
     """
     用户自主发起设备还库申请
@@ -401,6 +569,7 @@ def return_borrow(id):
 
 
 @app.route('/setting')
+@login_required
 def setting(): return "<h3>系统设置页面正在全力开发中...</h3><br><a href='javascript:history.back()'>返回上一页</a>"
 
 @app.route('/logout')
@@ -410,26 +579,28 @@ def logout():
     return redirect(url_for('login'))
 
 @app.route('/person')
+@login_required
 def person(): return "<h3>个人中心页面（开发中...）</h3><br><a href='javascript:history.back()'>返回上一页</a>"
 
 
 # ==================== 📦 动态自适应智能入库大盘总线 ====================
 @app.route('/inventory', methods=['GET', 'POST'])
+@admin_required
 def inventory():
-    if session.get('role') != 'admin' or session.get('view_mode') == 'user':
-        flash('您当前处于用户视图，无权访问库存管理后台！', 'error')
-        return redirect(url_for('user_dashboard'))
-
     if request.method == 'POST':
-        name = request.form.get('name')
-        asset_id = request.form.get('asset_id')
-        location = request.form.get('location') or "未知库区"
-        stock = int(request.form.get('stock') or 0)
-        status = request.form.get('status') or "库存充足"
+        name = request.form.get('name', '').strip()
+        asset_id = request.form.get('asset_id', '').strip()
+        location = request.form.get('location', '').strip() or "未知库区"
+        stock = parse_non_negative_int(request.form.get('stock'), 0)
+        status = request.form.get('status', '').strip() or "运行中"
+
+        if not name or not asset_id:
+            flash('入库失败：物资名称与资产编号不能为空！', 'error')
+            return redirect(url_for('inventory'))
 
         # ✨ 动态裂变：兼容 select 选取和文本框盲打输入新大类/新小类
-        category = request.form.get('category') or request.form.get('new_category_name')
-        sub_category = request.form.get('sub_category') or request.form.get('new_sub_category_name') or '通用'
+        category = request.form.get('new_category_name') or request.form.get('category')
+        sub_category = request.form.get('new_sub_category_name') or request.form.get('sub_category') or '通用'
 
         if not category or category.strip() == "":
             flash('入库失败：一级大类绝不能为空！', 'error')
@@ -461,6 +632,7 @@ def inventory():
                 asset_id=asset_id, name=name, category=category,
                 sub_category=sub_category, stock=stock, location=location, status=status
             )
+            normalize_item_state(new_item)
             db.session.add(new_item)
             db.session.commit()
             
@@ -475,14 +647,21 @@ def inventory():
     main_categories = MainCategory.query.all()
     total_items = db.session.query(db.func.sum(Item.stock)).scalar() or 0
     return render_template(
-        'inventory.html', active_page='inventory', user_info=db.session.get(User, session.get('user_id', 1)), 
+        'inventory.html', active_page='inventory', user_info=current_user(),
         view_mode=session.get('view_mode'), items_list=items_list, main_categories=main_categories,
-        stats={'total_categories': MainCategory.query.count(), 'total_items': total_items, 'low_stock_count': Item.query.filter(Item.stock == 0).count(), 'broken_items_count': Item.query.filter_by(status='急需维修').count()}
+        category_tree_data=build_category_tree(),
+        stats={
+            'total_categories': MainCategory.query.count(),
+            'total_items': total_items,
+            'low_stock_count': Item.query.filter(Item.stock <= Item.min_stock).count(),
+            'broken_items_count': Item.query.filter_by(status='急需维修').count()
+        }
     )
 
 
 # ==================== 🛡️ 容灾收容：一级大类安全隔离清除 ====================
 @app.route('/admin/main-category/delete/<int:id>', methods=['POST'])
+@admin_required
 def delete_main_category(id):
     cat = MainCategory.query.get_or_404(id)
     old_name = cat.name
@@ -511,6 +690,7 @@ def delete_main_category(id):
 
 # ==================== 🛡️ 容灾收容：二级小类安全隔离清除 ====================
 @app.route('/admin/sub-category/delete/<int:id>', methods=['POST'])
+@admin_required
 def delete_sub_category(id):
     sub = SubCategory.query.get_or_404(id)
     old_sub_name = sub.name
@@ -533,30 +713,57 @@ def delete_sub_category(id):
 
 
 @app.route('/admin/item/edit/<int:id>', methods=['POST'])
+@admin_required
 def edit_item(id):
     item = db.get_or_404(Item, id)
-    item.name = request.form.get('name')
-    item.asset_id = request.form.get('asset_id')
-    item.category = request.form.get('category')
-    item.sub_category = request.form.get('sub_category')
-    item.location = request.form.get('location')
-    item.stock = int(request.form.get('stock') or 0)
-    item.status = request.form.get('status')
+    name = request.form.get('name', '').strip()
+    asset_id = request.form.get('asset_id', '').strip()
+    if not name or not asset_id:
+        flash('更新失败：物资名称与资产编号不能为空！', 'error')
+        return redirect(url_for('inventory'))
+
+    duplicate = Item.query.filter(Item.asset_id == asset_id, Item.id != id).first()
+    if duplicate:
+        flash(f'更新失败：资产编号 {asset_id} 已被其他物资占用！', 'error')
+        return redirect(url_for('inventory'))
+
+    item.name = name
+    item.asset_id = asset_id
+    item.category = request.form.get('category', '').strip() or '其他'
+    item.sub_category = request.form.get('sub_category', '').strip() or '通用'
+    item.location = request.form.get('location', '').strip() or '未知库区'
+    item.stock = parse_non_negative_int(request.form.get('stock'), 0)
+    item.status = request.form.get('status', '').strip() or '运行中'
+    normalize_item_state(item)
     
-    db.session.commit()
-    flash(f'✨ 物资【{item.name}】全要素配置更新成功！', 'success')
+    try:
+        db.session.commit()
+        flash(f'✨ 物资【{item.name}】全要素配置更新成功！', 'success')
+    except Exception as e:
+        db.session.rollback()
+        flash(f'更新失败：{str(e)}', 'error')
     return redirect(url_for('inventory'))
 
 @app.route('/admin/item/delete/<int:id>', methods=['POST'])
+@admin_required
 def delete_item(id):
     item = db.get_or_404(Item, id)
     name = item.name
-    db.session.delete(item)
-    db.session.commit()
-    flash(f'🗑️ 物资【{name}】已成功从系统库中永久移除！', 'success')
+    related_records = BorrowRecord.query.filter_by(item_id=id).count() + BorrowDetail.query.filter_by(item_id=id).count()
+    if related_records:
+        flash(f'删除失败：物资【{name}】已有借用/审批流水，请保留历史记录或先完成单据闭环。', 'error')
+        return redirect(url_for('inventory'))
+    try:
+        db.session.delete(item)
+        db.session.commit()
+        flash(f'🗑️ 物资【{name}】已成功从系统库中永久移除！', 'success')
+    except Exception as e:
+        db.session.rollback()
+        flash(f'删除失败：{str(e)}', 'error')
     return redirect(url_for('inventory'))
 
 @app.route('/admin/inventory/export')
+@admin_required
 def export_inventory():
     items = Item.query.all()
     si = io.StringIO()
@@ -571,26 +778,46 @@ def export_inventory():
     return output
 
 @app.route('/admin/inventory/import', methods=['POST'])
+@admin_required
 def import_inventory():
     file = request.files.get('file')
-    if not file or not file.filename.endswith('.csv'):
+    if not file or not file.filename.lower().endswith('.csv'):
         flash('导入失败：请上传标准的 .csv 表格文件！', 'error')
         return redirect(url_for('inventory'))
     try:
-        stream = io.StringIO(file.stream.read().decode("utf-8"), newline=None)
-        if stream.getvalue().startswith('\ufeff'):
-            stream = io.StringIO(stream.getvalue().lstrip('\ufeff'))
+        stream = io.StringIO(decode_csv_upload(file), newline=None)
         csv_input = csv.reader(stream)
-        next(csv_input)
+        next(csv_input, None)
         success_count, skip_count = 0, 0
         for row in csv_input:
-            if len(row) < 6: continue
-            name, asset_id, category, sub_category, location, stock = row[0].strip(), row[1].strip(), row[2].strip(), row[3].strip(), row[4].strip(), row[5].strip()
-            status = row[6].strip() if len(row) > 6 else "库存充足"
-            if Item.query.filter_by(asset_id=asset_id).first():
+            if len(row) < 6:
                 skip_count += 1
                 continue
-            db.session.add(Item(name=name, asset_id=asset_id, category=category, sub_category=sub_category, location=location, stock=int(stock or 0), status=status))
+            name, asset_id, category, sub_category, location, stock = row[0].strip(), row[1].strip(), row[2].strip(), row[3].strip() or '通用', row[4].strip() or '未知库区', row[5].strip()
+            status = row[6].strip() if len(row) > 6 and row[6].strip() else "库存充足"
+            if not name or not asset_id or not category or Item.query.filter_by(asset_id=asset_id).first():
+                skip_count += 1
+                continue
+
+            main_cat = MainCategory.query.filter_by(name=category).first()
+            if not main_cat:
+                main_cat = MainCategory(name=category)
+                db.session.add(main_cat)
+                db.session.flush()
+            if sub_category != '通用' and not SubCategory.query.filter_by(main_id=main_cat.id, name=sub_category).first():
+                db.session.add(SubCategory(name=sub_category, main_id=main_cat.id))
+
+            item = Item(
+                name=name,
+                asset_id=asset_id,
+                category=category,
+                sub_category=sub_category,
+                location=location,
+                stock=parse_non_negative_int(stock, 0),
+                status=status
+            )
+            normalize_item_state(item)
+            db.session.add(item)
             success_count += 1
         db.session.commit()
         flash(f'📋 批量导入成功！成功追加 {success_count} 项物资，因编号重复跳过 {skip_count} 项。', 'success')
@@ -600,6 +827,7 @@ def import_inventory():
     return redirect(url_for('inventory'))
 
 @app.route('/admin/main-category/add', methods=['POST'])
+@admin_required
 def add_main_category():
     name = request.form.get('main_category_name', '').strip()
     if name:
@@ -613,11 +841,8 @@ def add_main_category():
 
 
 @app.route('/audit', methods=['GET'])
+@admin_required
 def audit():
-    if session.get('role') != 'admin' or session.get('view_mode') == 'user':
-        flash('您当前处于普通用户视图，无权访问审批决策控制台！', 'error')
-        return redirect(url_for('user_dashboard'))
-
     records_list = BorrowRecord.query.order_by(BorrowRecord.borrow_date.desc()).all()
     total_pending = BorrowRecord.query.filter(BorrowRecord.status.in_(['等待审批', '待归还审核'])).count()
     
@@ -627,7 +852,7 @@ def audit():
         BorrowRecord.borrow_date >= today_start
     ).count()
 
-    admin_info = db.session.get(User, session.get('user_id', 1))
+    admin_info = current_user()
     return render_template(
         'audit.html', active_page='audit', user_info=admin_info, view_mode=session.get('view_mode'), items_list=records_list,
         stats={'total_categories': total_pending, 'total_items': today_processed, 'low_stock_count': 0, 'broken_items_count': 0}
@@ -636,11 +861,8 @@ def audit():
 
 # 🌟 终极强悍核心控制总线：一套业务总线，同时完美处理【借出审批】与【归还入库核销】
 @app.route('/admin/audit/handle/<int:id>', methods=['POST'])
+@admin_required
 def handle_audit(id):
-    if session.get('role') != 'admin':
-        flash('安全拦截：非管理员非法越权提交签批指令！', 'error')
-        return redirect(url_for('user_dashboard'))
-
     record = db.get_or_404(BorrowRecord, id)
     action = request.form.get('action')          
     remark = request.form.get('remark', '').strip() 
@@ -656,21 +878,25 @@ def handle_audit(id):
                 for detail in record.details:
                     target_item = detail.item
                     if target_item:
+                        if '维修' in (target_item.status or ''):
+                            flash(f'审批中止：物资【{target_item.name}】处于维修状态，不能借出！', 'error')
+                            return redirect(url_for('audit'))
                         if target_item.stock < detail.quantity:
                             flash(f'审批中止：物资【{target_item.name}】实际库存不足以支付本次申请的 {detail.quantity} 件需求！', 'error')
                             return redirect(url_for('audit'))
                         target_item.stock -= detail.quantity
-                        if target_item.stock == 0:
-                            target_item.status, target_item.status_color = '无库存', 'error'
+                        normalize_item_state(target_item)
             else:
                 target_item = db.session.get(Item, record.item_id)
                 if target_item:
+                    if '维修' in (target_item.status or ''):
+                        flash(f'审批中止：物资【{target_item.name}】处于维修状态，不能借出！', 'error')
+                        return redirect(url_for('audit'))
                     if target_item.stock < 1:
                         flash(f'审批中止：物资【{target_item.name}】当前在库数量为 0！', 'error')
                         return redirect(url_for('audit'))
                     target_item.stock -= 1
-                    if target_item.stock == 0:
-                        target_item.status, target_item.status_color = '无库存', 'error'
+                    normalize_item_state(target_item)
 
         record.status = action
         db.session.commit()
@@ -685,14 +911,12 @@ def handle_audit(id):
                     target_item = detail.item
                     if target_item:
                         target_item.stock += detail.quantity
-                        if target_item.status == '无库存':
-                            target_item.status, target_item.status_color = '运行中', 'emerald'
+                        normalize_item_state(target_item)
             else:
                 target_item = db.session.get(Item, record.item_id)
                 if target_item:
                     target_item.stock += 1
-                    if target_item.status == '无库存':
-                        target_item.status, target_item.status_color = '运行中', 'emerald'
+                    normalize_item_state(target_item)
             
             record.status = '已归还'
             record.actual_return_date = datetime.now() # 历史归档归还时间戳写入
@@ -712,11 +936,8 @@ def handle_audit(id):
 
 
 @app.route('/admin/sub-category/add', methods=['POST'])
+@admin_required
 def add_sub_category():
-    if session.get('role') != 'admin':
-        flash('安全拦截：非管理员无权添加分类标签！', 'error')
-        return redirect(url_for('user_dashboard'))
-
     # 1. 提取前端动态 DOM 表单提交上来的核心字段
     main_id = request.form.get('main_category_id')
     sub_name = request.form.get('sub_category_name', '').strip()
@@ -763,8 +984,9 @@ def init_db():
         if User.query.count() == 0:
             secure_admin_password = generate_password_hash('123456', method='pbkdf2:sha256', salt_length=16)
             admin_user = User(username='admin', password=secure_admin_password, full_name='Alex Chen', role='admin')
-            normal_user1 = User(username='user1', password='123456', full_name='张三', role='user', credit_score=98, quota_limit=20)
-            normal_user2 = User(username='user2', password='123456', full_name='李四', role='user', credit_score=72, quota_limit=15)
+            default_user_password = generate_password_hash('123456', method='pbkdf2:sha256', salt_length=16)
+            normal_user1 = User(username='user1', password=default_user_password, full_name='张三', role='user', credit_score=98, quota_limit=20)
+            normal_user2 = User(username='user2', password=default_user_password, full_name='李四', role='user', credit_score=72, quota_limit=15)
             db.session.add_all([admin_user, normal_user1, normal_user2])
             db.session.commit()
 
@@ -775,7 +997,9 @@ def init_db():
             item1 = Item(asset_id="AST-2026-001", name="UltraSharp 32寸显示器", category="办公电子", sub_category="显示器", status="运行中", status_color="emerald", location="A座 3楼 办公区", stock=12, min_stock=2)
             item2 = Item(asset_id="AST-2026-002", name="65W 氮化镓充电头", category="办公电子", sub_category="充电周边", status="运行中", status_color="emerald", location="B座 电子阅览室", stock=5, min_stock=6) 
             item3 = Item(asset_id="AST-2026-009", name="Dell PowerEdge R750", category="IT硬件", sub_category="服务器", status="运行中", status_color="emerald", location="核心机房 03柜", stock=2, min_stock=1)
-            item4 = Item(asset_id="AST-2026-118", name="高精度机械臂 v4", category="工程机械", sub_category="无刷电机驱动板", status="急急待修", status_color="error", location="南区智能实验室", stock=1, min_stock=1)
+            item4 = Item(asset_id="AST-2026-118", name="高精度机械臂 v4", category="工程机械", sub_category="无刷电机驱动板", status="急需维修", status_color="error", location="南区智能实验室", stock=1, min_stock=1)
+            for item in (item1, item2, item3, item4):
+                normalize_item_state(item)
             db.session.add_all([item1, item2, item3, item4])
             db.session.commit() 
             
@@ -791,8 +1015,12 @@ def init_db():
             db.session.commit()
             print("🎉 活数据库存闭环流水线全部组装成功！")
 
-if __name__ == '__main__':
-    # 1. 确保在服务腾飞前，底层的数据库结构和种子数据已安全落库
+if os.environ.get('AUTO_INIT_DB', '1') != '0':
     init_db()
-    
-    app.run(host='0.0.0.0', port=5000, debug=False)
+
+def run_dev_server():
+    app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)), debug=os.environ.get('FLASK_DEBUG') == '1')
+
+
+if __name__ == '__main__':
+    run_dev_server()

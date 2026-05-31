@@ -102,7 +102,7 @@
                                 {% if record.details %}
                                     {% for detail in record.details %}
                                     <div class="flex items-center justify-between bg-slate-50 border border-slate-200/40 rounded-lg p-2 text-[11px] gap-4">
-                                        <span class="text-slate-700 font-bold truncate row-asset-name">{{ detail.item.name }}</span>
+                                        <span class="text-slate-700 font-bold truncate row-asset-name">{{ detail.item.name if detail.item else '未知物资' }}</span>
                                         <span class="px-1.5 py-0.2 bg-indigo-50 border border-indigo-100 text-indigo-600 font-extrabold rounded-md text-[10px] shrink-0">× {{ detail.quantity }} 件</span>
                                     </div>
                                     {% endfor %}

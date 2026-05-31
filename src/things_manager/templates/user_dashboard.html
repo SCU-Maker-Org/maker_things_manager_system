@@ -36,9 +36,9 @@
         <div class="bg-white rounded-xl border border-outline-variant shadow-sm flex flex-col overflow-hidden">
             <div class="px-6 py-4 border-b border-outline-variant flex justify-between items-center">
                 <h3 class="font-bold text-base">我的借用动态</h3>
-                <button class="text-primary text-xs hover:underline flex items-center font-medium">
+                <a href="{{ url_for('borrow') }}" class="text-primary text-xs hover:underline flex items-center font-medium">
                     查看完整历史 <span class="material-symbols-outlined text-[16px] ml-1">arrow_forward</span>
-                </button>
+                </a>
             </div>
             <div class="overflow-x-auto">
                 <table class="w-full text-left text-sm">
@@ -56,12 +56,12 @@
                             <td class="px-6 py-4 flex items-center">
                                 <div class="w-9 h-9 rounded bg-surface-container-highest flex items-center justify-center mr-3">
                                     <span class="material-symbols-outlined text-on-surface-variant">
-                                        {{ 'monitor' if '显示器' in record.item.name else 'devices' }}
+                                        {{ 'monitor' if record.item and '显示器' in record.item.name else 'devices' }}
                                     </span>
                                 </div>
                                 <div>
-                                    <p class="font-semibold text-on-surface">{{ record.item.name }}</p>
-                                    <p class="text-[11px] text-on-surface-variant">资产编号: {{ record.item.asset_id }}</p>
+                                    <p class="font-semibold text-on-surface">{{ record.item.name if record.item else '未知资产物料' }}</p>
+                                    <p class="text-[11px] text-on-surface-variant">资产编号: {{ record.item.asset_id if record.item else '-' }}</p>
                                 </div>
                             </td>
                             <td class="px-6 py-4 text-on-surface-variant">{{ record.borrow_date.strftime('%m月%d日') }}</td>
@@ -95,7 +95,7 @@
         <div class="space-y-3">
             <div class="flex justify-between items-center">
                 <h3 class="font-bold text-base">资源快速浏览</h3>
-                <button class="text-primary text-xs hover:underline font-medium">浏览全部</button>
+                <a href="{{ url_for('catalog') }}" class="text-primary text-xs hover:underline font-medium">浏览全部</a>
             </div>
             <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
                 <div class="bg-white border border-outline-variant rounded-xl p-4 flex flex-col items-center text-center hover:shadow-md transition-all group cursor-pointer">
@@ -139,10 +139,11 @@
                 <div class="space-y-1.5">
                     <div class="flex justify-between items-center text-xs">
                         <span class="text-on-surface-variant">本月借用额度</span>
-                        <span class="font-bold">{{ my_active_count }} / {{ user_info.quota_limit }} 件</span>
+                        <span class="font-bold">{{ quota_used }} / {{ user_info.quota_limit }} 件</span>
                     </div>
                     <div class="w-full bg-surface-container-highest h-1.5 rounded-full overflow-hidden">
-                        <div class="bg-primary h-full transition-all w-[{{ (my_active_count / user_info.quota_limit * 100) | int }}%]"></div>
+                        {% set quota_percent = ((quota_used / user_info.quota_limit * 100) | int) if user_info.quota_limit else 0 %}
+                        <div class="bg-primary h-full transition-all w-[{{ quota_percent if quota_percent <= 100 else 100 }}%]"></div>
                     </div>
                 </div>
                 <div class="flex justify-between items-center pt-2 border-t border-outline-variant/50">

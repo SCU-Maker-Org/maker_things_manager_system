@@ -86,6 +86,8 @@
                 class="status-tab px-5 py-1.5 rounded-lg text-xs font-medium text-slate-600 hover:text-on-surface transition-all">待审批</button>
             <button onclick="switchBorrowTab('进行中', this)"
                 class="status-tab px-5 py-1.5 rounded-lg text-xs font-medium text-slate-600 hover:text-on-surface transition-all">进行中</button>
+            <button onclick="switchBorrowTab('待归还审核', this)"
+                class="status-tab px-5 py-1.5 rounded-lg text-xs font-medium text-slate-600 hover:text-on-surface transition-all">归还审核</button>
             <button onclick="switchBorrowTab('已拒绝', this)"
                 class="status-tab px-5 py-1.5 rounded-lg text-xs font-medium text-slate-600 hover:text-on-surface transition-all">已驳回</button>
         </div>
@@ -123,7 +125,7 @@
                                     class="flex items-center justify-between bg-slate-50 border border-slate-100 rounded-lg p-2 text-[11px]">
                                     <div class="flex items-center gap-2">
                                         <span class="material-symbols-outlined text-slate-400 text-sm">devices</span>
-                                        <span class="font-bold text-on-surface row-item-name">{{ detail.item.name
+                                        <span class="font-bold text-on-surface row-item-name">{{ detail.item.name if detail.item else '未知资产物料'
                                             }}</span>
                                     </div>
                                     <span
@@ -166,18 +168,24 @@
                             <span
                                 class="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-700">🟢
                                 借用中</span>
-                            {% else %}
+                            {% elif record.status == '待归还审核' %}
+                            <span
+                                class="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-700">归还审核中</span>
+                            {% elif record.status == '已归还' %}
                             <span
                                 class="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-blue-100 text-primary">已归还</span>
+                            {% else %}
+                            <span
+                                class="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-600">{{ record.status }}</span>
                             {% endif %}
                         </td>
 
                         <td class="px-6 py-4 text-center pr-6">
                             {% if record.status == '等待审批' %}
-                            <button onclick="revokeApplication('{{ record.id }}')"
+                            <button onclick='revokeApplication({{ record.id|string|tojson }})'
                                 class="text-rose-600 font-bold hover:underline focus:outline-none">撤回申请</button>
                             {% elif record.status == '进行中' %}
-                            <button onclick="returnItems('{{ record.id }}')"
+                            <button onclick='returnItems({{ record.id|string|tojson }})'
                                 class="text-emerald-600 font-bold hover:underline focus:outline-none">申请归还</button>
                             {% elif record.status == '待归还审核' %}
                             <span class="text-amber-500 font-medium italic select-none">归还审核中</span>
@@ -213,7 +221,6 @@
     window.revokeApplication = function (id) {
         if (!confirm("⚠️ 确定要撤回此项合并申领单据吗？撤回后单据将从审批队列中移除并永久销毁。")) return;
 
-        // 向刚才写好的后端 /api/borrow/revoke/<id> 接口发起 POST 轰炸
         fetch(`/api/borrow/revoke/${id}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' }
@@ -222,7 +229,6 @@
             .then(res => {
                 if (res.success) {
                     alert(res.msg);
-                    // 刷新页面，让被删除的单据在表格里原地蒸发，大盘指标数字同步减少
                     window.location.reload();
                 } else {
                     alert("撤回失败：" + res.msg); // 捕获并提示非法的越权操作或状态不对
@@ -253,14 +259,6 @@
 
             row.style.display = (statusMatch && textMatch) ? '' : 'none';
         });
-    }
-
-    // 撤回单据处理接口
-    if (!window.revokeApplication) {
-        window.revokeApplication = function (id) {
-            if (!confirm("⚠️ 确定要撤回此项申领单据吗？撤回后单据将无法复原。")) return;
-            alert("单据 #" + id + " 撤回请求已发送。（可在此处对接你的单件取消路由接口）");
-        }
     }
 
 
