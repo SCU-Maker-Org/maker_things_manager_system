@@ -7,6 +7,9 @@ WORKDIR /app
 # 3. 设置环境变量，防止 Python 产生 pyc 缓存文件，并让日志实时输出
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
+ENV APP_ENV=production
+ENV SEED_DEMO_DATA=0
+ENV AUTO_INIT_DB=0
 
 # 4. 先把依赖文件复制进去（利用 Docker 缓存机制加速后续构建）
 # 提示：记得在本地终端运行 pip freeze > requirements.txt 生成依赖清单
@@ -21,5 +24,10 @@ COPY . /app/
 # 7. 暴露出 Flask 默认的 5000 端口
 EXPOSE 5000
 
-# 8. 生产环境启动命令：使用 gunicorn 承载 Flask 应用
+# 8. 容器健康检查：复用应用内置的 /healthz，不额外安装 curl
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+    CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:5000/healthz', timeout=3).read()"
+
+# 9. 生产环境启动命令：使用 gunicorn 承载 Flask 应用
+ENTRYPOINT ["sh", "/app/docker-entrypoint.sh"]
 CMD ["gunicorn", "-w", "2", "-b", "0.0.0.0:5000", "--access-logfile", "-", "--error-logfile", "-", "wsgi:app"]

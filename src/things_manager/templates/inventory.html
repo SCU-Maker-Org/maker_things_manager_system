@@ -85,6 +85,7 @@
         
         <div class="flex items-center flex-wrap gap-2 w-full xl:w-auto justify-end">
             <form action="/admin/inventory/import" method="POST" enctype="multipart/form-data" class="flex items-center m-0">
+                <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
                 <label class="cursor-pointer px-4 py-2 bg-slate-100 hover:bg-slate-200 border border-slate-200 text-slate-700 text-xs font-bold rounded-xl flex items-center gap-1.5 transition-all shadow-sm">
                     <span class="material-symbols-outlined text-base">file_upload</span>表格导入
                     <input type="file" name="file" accept=".csv" onchange="this.form.submit()" class="hidden">
@@ -122,6 +123,7 @@
                         {{ main.name }}
                     </button>
                     <form action="{{ url_for('delete_main_category', id=main.id) }}" method="POST" class="edit-actions hidden absolute -top-1 -right-1 md:top-1.5 md:right-2" onsubmit="return confirm('⚠️ 确定移除该大类及其旗下的所有子分类绑定吗？')">
+                        <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
                         <button type="submit" class="w-4 h-4 bg-error text-white rounded-full flex items-center justify-center shadow-md hover:bg-red-600 transition-all hover:scale-110">
                             <span class="material-symbols-outlined text-[10px] font-black">close</span>
                         </button>
@@ -130,6 +132,7 @@
                 {% endfor %}
 
                 <form action="{{ url_for('add_main_category') }}" method="POST" onsubmit="localStorage.setItem('activeMainCategory', this.main_category_name.value.trim());" class="edit-actions hidden items-center justify-between gap-2 bg-white border border-dashed border-primary/40 rounded-xl pl-3 pr-1.5 py-1.5 mt-1 mx-0.5 whitespace-nowrap shadow-sm w-auto md:w-full shrink-0">
+                    <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
                     <input type="text" name="main_category_name" required placeholder="追加新大类..." class="flex-1 min-w-0 bg-transparent text-xs border-none border-0 outline-none font-semibold text-on-surface focus:outline-none focus:ring-0 p-0 m-0">
                     <button type="submit" class="text-primary flex items-center hover:scale-110 transition-transform focus:outline-none shrink-0"><span class="material-symbols-outlined text-base">add_circle</span></button>
                 </form>
@@ -240,6 +243,7 @@
             <span class="material-symbols-outlined text-primary">add_to_photos</span>新物资全要素入库
         </h4>
         <form class="space-y-4" action="{{ url_for('inventory') }}" method="POST">
+            <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
             <div>
                 <label class="block text-[11px] font-bold text-on-surface-variant mb-1">物资名称 *</label>
                 <input type="text" name="name" required placeholder="如：大疆无刷电机驱动模块 (CAN-FD版)" class="w-full bg-surface-container-low border border-outline-variant rounded-xl p-2.5 text-xs text-on-surface outline-none focus:border-primary">
@@ -298,6 +302,7 @@
                 <span class="material-symbols-outlined text-indigo-600">tune</span>物资全要素精细配置
             </h4>
             <form id="edit-delete-form" action="" method="POST" onsubmit="return confirm('🚨 警告：这会从系统中永久抹除该资产的一切数据流水！确定继续？')">
+                <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
                 <button type="submit" class="text-error hover:text-red-600 text-xs font-bold flex items-center gap-0.5 border border-red-200 hover:border-red-400 bg-red-50 px-2.5 py-1 rounded-xl transition-all">
                     <span class="material-symbols-outlined text-sm">delete</span>永久删除
                 </button>
@@ -305,6 +310,7 @@
         </div>
         
         <form id="edit-main-form" class="space-y-3" action="" method="POST">
+            <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
             <div class="grid grid-cols-2 gap-3">
                 <div>
                     <label class="block text-[11px] font-bold text-on-surface-variant mb-1">物资全称</label>
@@ -354,6 +360,15 @@
 
 <script>
     const categoryTreeMatrix = {{ category_tree_data | tojson }};
+    const csrfToken = document.querySelector('meta[name="csrf-token"]').content;
+
+    function addCsrfField(form) {
+        const input = document.createElement('input');
+        input.type = 'hidden';
+        input.name = '_csrf_token';
+        input.value = csrfToken;
+        form.prepend(input);
+    }
 
     let activeMainCategoryFilter = 'all';
     let activeSubCategoryFilter = 'all';
@@ -428,6 +443,7 @@
                         delForm.className = 'inline-flex items-center ml-1 pl-1.5 border-l border-slate-300/60';
                         delForm.onsubmit = function() { return confirm(`确定永久移除二级分类【${sub.name}】吗？`); };
                         delForm.innerHTML = `<button type="submit" class="text-error hover:text-red-500 font-bold flex items-center"><span class="material-symbols-outlined text-sm">close</span></button>`;
+                        addCsrfField(delForm);
                         badgeWrapper.appendChild(delForm);
                     }
                     subContainer.appendChild(badgeWrapper);
@@ -443,6 +459,7 @@
                     <input type="text" name="sub_category_name" required placeholder="+ 新增子分类" class="bg-transparent text-xs border-none border-0 outline-none p-0 m-0 w-24 font-bold text-primary placeholder-primary/60 focus:outline-none focus:ring-0">
                     <button type="submit" class="text-primary flex items-center hover:scale-110 transition-transform focus:outline-none"><span class="material-symbols-outlined text-base font-bold">add_circle</span></button>
                 `;
+                addCsrfField(addSubForm);
                 subContainer.appendChild(addSubForm);
             }
         }
@@ -521,22 +538,30 @@
     }
 
     // ==================== 📥 下拉级联渲染器 ====================
+    function renderSubCategoryOptions(subSelect, availableSubs, selectedSubName = null) {
+        subSelect.replaceChildren();
+        const options = availableSubs.length > 0 ? availableSubs : [{ name: '通用' }];
+        options.forEach(sub => {
+            const option = document.createElement('option');
+            option.value = sub.name;
+            option.textContent = sub.name;
+            option.selected = selectedSubName === sub.name;
+            subSelect.appendChild(option);
+        });
+    }
+
     function syncInboundSubCategories() {
         const mainSelect = document.getElementById('inbound-main-cat'); const subSelect = document.getElementById('inbound-sub-cat');
         if (!mainSelect || !subSelect) return;
-        const availableSubs = (categoryTreeMatrix[mainSelect.value] || { subs: [] }).subs; subSelect.innerHTML = '';
-        if (availableSubs.length === 0) {
-            subSelect.innerHTML = '<option value="通用">通用</option>';
-        } else { availableSubs.forEach(sub => subSelect.innerHTML += `<option value="${sub.name}">${sub.name}</option>`); }
+        const availableSubs = (categoryTreeMatrix[mainSelect.value] || { subs: [] }).subs;
+        renderSubCategoryOptions(subSelect, availableSubs);
     }
 
     function syncEditSubCategories(selectedSubName = null) {
         const mainSelect = document.getElementById('edit-main-cat'); const subSelect = document.getElementById('edit-sub-cat');
         if (!mainSelect || !subSelect) return;
-        const availableSubs = (categoryTreeMatrix[mainSelect.value] || { subs: [] }).subs; subSelect.innerHTML = '';
-        if (availableSubs.length === 0) {
-            subSelect.innerHTML = '<option value="通用">通用</option>';
-        } else { availableSubs.forEach(sub => subSelect.innerHTML += `<option value="${sub.name}" ${selectedSubName === sub.name ? 'selected' : ''}>${sub.name}</option>`); }
+        const availableSubs = (categoryTreeMatrix[mainSelect.value] || { subs: [] }).subs;
+        renderSubCategoryOptions(subSelect, availableSubs, selectedSubName);
     }
 
     // ==================== 🛠️ 模态框显隐驱动中心 ====================

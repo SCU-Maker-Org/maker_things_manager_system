@@ -4,6 +4,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="csrf-token" content="{{ csrf_token() }}">
   <title>{% block title %}物资管理系统{% endblock %}</title>
 
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -207,17 +208,19 @@
         class="mt-auto flex flex-col space-y-1 border-t pt-4 px-3 {{ 'border-slate-800' if view_mode == 'admin' else 'border-outline-variant' }}">
 
         {% if user_info and user_info.role == 'admin' %}
-        <a class="flex items-center px-4 py-3 rounded-xl font-semibold transition-all duration-150 active:scale-95
-            {{ 'bg-indigo-600 text-white hover:bg-indigo-500' if view_mode == 'user' else 'bg-slate-800 text-indigo-400 hover:bg-slate-700' }}"
-          href="{{ url_for('switch_mode') }}">
-          {% if view_mode == 'user' %}
-          <span class="material-symbols-outlined mr-3">admin_panel_settings</span>
-          <span class="text-sm">返回管理模式</span>
-          {% else %}
-          <span class="material-symbols-outlined mr-3">switch_account</span>
-          <span class="text-sm">切换至用户模式</span>
-          {% endif %}
-        </a>
+        <form action="{{ url_for('switch_mode') }}" method="POST" class="m-0">
+          <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+          <button type="submit" class="w-full flex items-center text-left px-4 py-3 rounded-xl font-semibold transition-all duration-150 active:scale-95
+              {{ 'bg-indigo-600 text-white hover:bg-indigo-500' if view_mode == 'user' else 'bg-slate-800 text-indigo-400 hover:bg-slate-700' }}">
+            {% if view_mode == 'user' %}
+            <span class="material-symbols-outlined mr-3">admin_panel_settings</span>
+            <span class="text-sm">返回管理模式</span>
+            {% else %}
+            <span class="material-symbols-outlined mr-3">switch_account</span>
+            <span class="text-sm">切换至用户模式</span>
+            {% endif %}
+          </button>
+        </form>
         {% endif %}
 
         <!-- <a class="flex items-center px-4 py-3 rounded-xl transition-all {{ 'text-slate-300 hover:bg-slate-800' if view_mode == 'admin' else 'text-on-surface-variant hover:bg-surface-container-high' }}"
@@ -225,11 +228,13 @@
           <span class="material-symbols-outlined mr-3">settings</span>
           <span class="text-sm">系统设置</span>
         </a> -->
-        <a class="flex items-center px-4 py-3 rounded-xl transition-all {{ 'text-slate-300 hover:bg-slate-800' if view_mode == 'admin' else 'text-on-surface-variant hover:bg-surface-container-high' }}"
-          href="{{ url_for('logout') }}">
-          <span class="material-symbols-outlined mr-3">logout</span>
-          <span class="text-sm">退出登录</span>
-        </a>
+        <form action="{{ url_for('logout') }}" method="POST" class="m-0">
+          <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+          <button type="submit" class="w-full flex items-center text-left px-4 py-3 rounded-xl transition-all {{ 'text-slate-300 hover:bg-slate-800' if view_mode == 'admin' else 'text-on-surface-variant hover:bg-surface-container-high' }}">
+            <span class="material-symbols-outlined mr-3">logout</span>
+            <span class="text-sm">退出登录</span>
+          </button>
+        </form>
       </div>
     </aside>
 

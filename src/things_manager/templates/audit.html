@@ -141,11 +141,13 @@
                             {% if record.status == '等待审批' %}
                                 <div class="flex items-center justify-end gap-2">
                                     <form action="{{ url_for('handle_audit', id=record.id) }}" method="POST" class="inline" onsubmit="return confirm('确认批准物资出库申请单吗？')">
+                                        <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
                                         <input type="hidden" name="action" value="进行中">
                                         <button type="submit" class="text-emerald-600 font-bold hover:underline focus:outline-none">同意借出</button>
                                     </form>
                                     <span class="text-slate-300">|</span>
                                     <form action="{{ url_for('handle_audit', id=record.id) }}" method="POST" class="inline" onsubmit="return confirm('确定要驳回此申领单据吗？')">
+                                        <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
                                         <input type="hidden" name="action" value="已拒绝">
                                         <button type="submit" class="text-rose-600 font-bold hover:underline focus:outline-none">拒绝</button>
                                     </form>
@@ -153,11 +155,13 @@
                             {% elif record.status == '待归还审核' %}
                                 <div class="flex items-center justify-end gap-2">
                                     <form action="{{ url_for('handle_audit', id=record.id) }}" method="POST" class="inline" onsubmit="return confirm('确认物资完好，办理核销入库吗？')">
+                                        <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
                                         <input type="hidden" name="action" value="已归还">
                                         <button type="submit" class="text-indigo-600 font-bold hover:underline focus:outline-none">确认入库</button>
                                     </form>
                                     <span class="text-slate-300">|</span>
                                     <form action="{{ url_for('handle_audit', id=record.id) }}" method="POST" class="inline" onsubmit="return confirm('确认资产有损/缺失，强行驳回并恢复其持用责任吗？')">
+                                        <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
                                         <input type="hidden" name="action" value="进行中">
                                         <button type="submit" class="text-amber-600 font-bold hover:underline focus:outline-none">异常驳回</button>
                                     </form>

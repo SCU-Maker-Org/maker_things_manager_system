@@ -203,7 +203,7 @@
             </div>
             <div class="pt-2 flex gap-3">
                 <button onclick="clearCart()" class="px-4 py-2.5 border border-outline-variant text-on-surface-variant hover:bg-red-50 hover:text-red-600 hover:border-red-200 rounded-xl text-xs font-bold transition-colors">清空箱子</button>
-                <button onclick="submitBatchBorrow()" class="flex-1 py-2.5 bg-indigo-600 text-white hover:bg-indigo-500 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1">提交合并申请</button>
+                <button id="submit-borrow-button" type="button" onclick="submitBatchBorrow()" class="flex-1 py-2.5 bg-indigo-600 text-white hover:bg-indigo-500 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1 disabled:opacity-60 disabled:cursor-not-allowed">提交合并申请</button>
             </div>
         </div>
     </div>
@@ -315,28 +315,105 @@
     }
 
     // ==================== 🛒 本地暂存确认箱控制引擎 ====================
-    let cart = JSON.parse(localStorage.getItem('things_cart')) || [];
+    const CART_STORAGE_KEY = 'things_cart';
+
+    function normalizeCartItem(value) {
+        if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+
+        const numericId = Number(value.id);
+        const quantity = Number(value.quantity);
+        const name = typeof value.name === 'string' ? value.name.trim() : '';
+        const assetId = typeof value.assetId === 'string' ? value.assetId.trim() : '';
+
+        if (!Number.isSafeInteger(numericId) || numericId <= 0) return null;
+        if (!Number.isSafeInteger(quantity) || quantity <= 0) return null;
+        if (!name || !assetId) return null;
+
+        return {
+            id: String(numericId),
+            name: name.slice(0, 100),
+            assetId: assetId.slice(0, 50),
+            quantity: quantity
+        };
+    }
+
+    function persistCart(items = cart) {
+        try {
+            if (items.length === 0) {
+                localStorage.removeItem(CART_STORAGE_KEY);
+            } else {
+                localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(items));
+            }
+        } catch (error) {
+            console.warn('暂存箱无法写入本地存储:', error);
+        }
+    }
+
+    function loadCart() {
+        try {
+            const storedValue = localStorage.getItem(CART_STORAGE_KEY);
+            if (!storedValue) return [];
+
+            const parsedValue = JSON.parse(storedValue);
+            if (!Array.isArray(parsedValue)) throw new TypeError('暂存箱数据必须是数组');
+
+            const normalizedItems = [];
+            const seenIds = new Set();
+            for (const value of parsedValue) {
+                const item = normalizeCartItem(value);
+                if (!item || seenIds.has(item.id)) continue;
+                normalizedItems.push(item);
+                seenIds.add(item.id);
+                if (normalizedItems.length === 50) break;
+            }
+
+            persistCart(normalizedItems);
+            return normalizedItems;
+        } catch (error) {
+            console.warn('暂存箱本地数据无效，已重置:', error);
+            try {
+                localStorage.removeItem(CART_STORAGE_KEY);
+            } catch (storageError) {
+                console.warn('暂存箱本地数据无法清理:', storageError);
+            }
+            return [];
+        }
+    }
+
+    let cart = loadCart();
     let activeId = null, activeName = null, activeAssetId = null, activeMaxStock = 1;
+    let isSubmitting = false;
 
     function quickAddToCart(id, name, assetId, maxStock) {
-        if (cart.some(i => i.id === id)) return;
-        if (maxStock < 1) return alert("该物资当前已无在库库存！");
+        const item = normalizeCartItem({ id, name, assetId, quantity: 1 });
+        const availableStock = Number(maxStock);
+        if (!item || !Number.isSafeInteger(availableStock)) return alert("该物资数据无效，请刷新页面后重试！");
+        if (cart.some(i => i.id === item.id)) return;
+        if (availableStock < 1) return alert("该物资当前已无在库库存！");
         
-        cart.push({ id, name, assetId, quantity: 1 });
-        localStorage.setItem('things_cart', JSON.stringify(cart));
+        cart.push(item);
+        persistCart();
         refreshCartUI();
     }
 
     function openFormModal(id, name, assetId, maxStock) {
-        if (cart.some(i => i.id === id)) return;
-        activeId = id; activeName = name; activeAssetId = assetId; activeMaxStock = maxStock;
+        const item = normalizeCartItem({ id, name, assetId, quantity: 1 });
+        const availableStock = Number(maxStock);
+        if (!item || !Number.isSafeInteger(availableStock) || availableStock < 1) {
+            return alert("该物资数据无效，请刷新页面后重试！");
+        }
+        if (cart.some(i => i.id === item.id)) return;
+        activeId = item.id;
+        activeName = item.name;
+        activeAssetId = item.assetId;
+        activeMaxStock = availableStock;
 
-        document.getElementById('modal-item-name').innerText = name;
-        document.getElementById('modal-item-id').innerText = `编号: ${assetId}`;
-        document.getElementById('modal-item-stock').innerText = `当前最大在库: ${maxStock} 件`;
+        document.getElementById('modal-item-name').innerText = activeName;
+        document.getElementById('modal-item-id').innerText = `编号: ${activeAssetId}`;
+        document.getElementById('modal-item-stock').innerText = `当前最大在库: ${activeMaxStock} 件`;
         
         const qtyInput = document.getElementById('modal-quantity');
-        qtyInput.value = 1; qtyInput.max = maxStock;
+        qtyInput.value = 1; qtyInput.max = activeMaxStock;
 
         document.getElementById('form-modal').classList.remove('hidden');
         setTimeout(() => { document.getElementById('form-card').classList.remove('scale-95'); }, 20);
@@ -349,25 +426,29 @@
 
     // 确认入箱
     function confirmAddToBag() {
-        const quantity = parseInt(document.getElementById('modal-quantity').value) || 1;
-        if (quantity < 1) return alert("借用数量至少为 1 件！");
+        const quantity = Number(document.getElementById('modal-quantity').value);
+        if (!Number.isSafeInteger(quantity) || quantity < 1) return alert("借用数量至少为 1 件且必须是整数！");
         if (quantity > activeMaxStock) return alert(`库存不足！最大可供申领数量为 ${activeMaxStock} 件。`);
 
         if (!cart.some(i => i.id === activeId)) {
-            cart.push({ id: activeId, name: activeName, assetId: activeAssetId, quantity: quantity });
-            localStorage.setItem('things_cart', JSON.stringify(cart));
+            const item = normalizeCartItem({ id: activeId, name: activeName, assetId: activeAssetId, quantity });
+            if (!item) return alert("该物资数据无效，请刷新页面后重试！");
+            cart.push(item);
+            persistCart();
         }
         closeFormModal(); refreshCartUI();
     }
 
     function removeFromCart(id) {
-        cart = cart.filter(i => i.id !== id);
-        localStorage.setItem('things_cart', JSON.stringify(cart));
+        const normalizedId = String(Number(id));
+        cart = cart.filter(i => i.id !== normalizedId);
+        persistCart();
         refreshCartUI();
     }
 
     function clearCart() {
-        cart = []; localStorage.removeItem('things_cart');
+        cart = [];
+        persistCart();
         refreshCartUI();
     }
 
@@ -392,44 +473,116 @@
             badge.classList.toggle('scale-100', cart.length > 0);
         }
 
+        const cartItemIds = new Set(cart.map(item => item.id));
         document.querySelectorAll('[id^="wrapper-"]').forEach(wrapper => {
             const itemId = wrapper.id.replace('wrapper-', '');
-            if (cart.some(i => i.id === itemId)) {
-                wrapper.innerHTML = `<span class="text-on-surface-variant opacity-40 font-medium text-xs flex items-center gap-0.5 cursor-default pointer-events-none select-none"><span class="material-symbols-outlined text-sm">task_alt</span>已在箱中</span>`;
+            const isInCart = cartItemIds.has(itemId);
+            wrapper.querySelectorAll('button').forEach(button => {
+                button.style.display = isInCart ? 'none' : '';
+                button.disabled = isInCart;
+            });
+
+            let status = wrapper.querySelector('[data-cart-status]');
+            if (!status) {
+                status = document.createElement('span');
+                status.dataset.cartStatus = 'true';
+                status.className = 'text-on-surface-variant opacity-40 font-medium text-xs flex items-center gap-0.5 cursor-default pointer-events-none select-none';
+
+                const icon = document.createElement('span');
+                icon.className = 'material-symbols-outlined text-sm';
+                icon.textContent = 'task_alt';
+                status.append(icon, document.createTextNode('已在箱中'));
+                wrapper.appendChild(status);
             }
+            status.style.display = isInCart ? '' : 'none';
         });
 
+        listContainer.replaceChildren();
         if (cart.length === 0) {
-            listContainer.innerHTML = `<div class="h-64 flex flex-col items-center justify-center text-on-surface-variant opacity-40"><span class="material-symbols-outlined text-3xl mb-1">shopping_cart_off</span><p class="text-xs">暂存箱里空空如也~</p></div>`;
-            if(window.isCartResetting) { window.isCartResetting = false; window.location.reload(); }
+            const emptyState = document.createElement('div');
+            emptyState.className = 'h-64 flex flex-col items-center justify-center text-on-surface-variant opacity-40';
+
+            const emptyIcon = document.createElement('span');
+            emptyIcon.className = 'material-symbols-outlined text-3xl mb-1';
+            emptyIcon.textContent = 'shopping_cart_off';
+
+            const emptyText = document.createElement('p');
+            emptyText.className = 'text-xs';
+            emptyText.textContent = '暂存箱里空空如也~';
+            emptyState.append(emptyIcon, emptyText);
+            listContainer.appendChild(emptyState);
             return;
         }
 
-        listContainer.innerHTML = cart.map(i => `
-            <div class="flex items-center justify-between p-3 bg-surface border border-outline-variant/60 rounded-xl">
-                <div class="flex items-center gap-3">
-                    <span class="material-symbols-outlined text-indigo-600 text-sm">devices</span>
-                    <div>
-                        <p class="text-xs font-bold text-on-surface">${i.name}</p>
-                        <div class="flex items-center gap-2 mt-0.5">
-                            <span class="text-[10px] text-on-surface-variant">编号: ${i.assetId}</span>
-                            <span class="px-1.5 py-0.2 bg-indigo-50 text-indigo-600 border border-indigo-100 font-extrabold rounded text-[9px]">× ${i.quantity} 件</span>
-                        </div>
-                    </div>
-                </div>
-                <button onclick="removeFromCart('${i.id}'); window.isCartResetting=true;" class="text-on-surface-variant opacity-60 hover:opacity-100 hover:text-error transition-all focus:outline-none"><span class="material-symbols-outlined text-sm">delete</span></button>
-            </div>
-        `).join('');
+        const fragment = document.createDocumentFragment();
+        cart.forEach(item => {
+            const card = document.createElement('div');
+            card.className = 'flex items-center justify-between p-3 bg-surface border border-outline-variant/60 rounded-xl';
+
+            const itemSummary = document.createElement('div');
+            itemSummary.className = 'flex items-center gap-3';
+
+            const itemIcon = document.createElement('span');
+            itemIcon.className = 'material-symbols-outlined text-indigo-600 text-sm';
+            itemIcon.textContent = 'devices';
+
+            const itemText = document.createElement('div');
+            const itemName = document.createElement('p');
+            itemName.className = 'text-xs font-bold text-on-surface';
+            itemName.textContent = item.name;
+
+            const metadata = document.createElement('div');
+            metadata.className = 'flex items-center gap-2 mt-0.5';
+
+            const asset = document.createElement('span');
+            asset.className = 'text-[10px] text-on-surface-variant';
+            asset.textContent = `编号: ${item.assetId}`;
+
+            const quantity = document.createElement('span');
+            quantity.className = 'px-1.5 py-0.2 bg-indigo-50 text-indigo-600 border border-indigo-100 font-extrabold rounded text-[9px]';
+            quantity.textContent = `× ${item.quantity} 件`;
+
+            const removeButton = document.createElement('button');
+            removeButton.type = 'button';
+            removeButton.className = 'text-on-surface-variant opacity-60 hover:opacity-100 hover:text-error transition-all focus:outline-none';
+            removeButton.setAttribute('aria-label', `从暂存箱移除 ${item.name}`);
+            removeButton.addEventListener('click', () => removeFromCart(item.id));
+
+            const removeIcon = document.createElement('span');
+            removeIcon.className = 'material-symbols-outlined text-sm';
+            removeIcon.textContent = 'delete';
+
+            metadata.append(asset, quantity);
+            itemText.append(itemName, metadata);
+            itemSummary.append(itemIcon, itemText);
+            removeButton.appendChild(removeIcon);
+            card.append(itemSummary, removeButton);
+            fragment.appendChild(card);
+        });
+        listContainer.appendChild(fragment);
+    }
+
+    function setSubmitting(submitting) {
+        isSubmitting = submitting;
+        const submitButton = document.getElementById('submit-borrow-button');
+        if (!submitButton) return;
+        submitButton.disabled = submitting;
+        submitButton.textContent = submitting ? '提交中…' : '提交合并申请';
     }
 
     // 核心异步发射：异步打包落库总线
-    function submitBatchBorrow() {
+    async function submitBatchBorrow() {
+        if (isSubmitting) return;
+
         const reason = document.getElementById('borrow-reason').value.trim();
         const returnDate = document.getElementById('return-date').value;
 
         if (cart.length === 0) return alert("暂存箱里还没有任何物资，请先添加物料！");
         if (!reason) return alert("请填写统一的借用用途/实验原因！");
         if (!returnDate) return alert("请选择预计归还日期！");
+
+        const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content;
+        if (!csrfToken) return alert("页面安全令牌缺失，请刷新页面后重试！");
 
         const payload = {
             reason: reason,
@@ -440,28 +593,34 @@
             }))
         };
 
-        fetch('/api/borrow/submit', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify(payload)
-        })
-        .then(response => response.json())
-        .then(res => {
-            if (res.success) {
-                alert(res.msg); 
-                clearCart();             
-                toggleCartDrawer(false); 
-                setTimeout(() => { window.location.reload(); }, 300); 
+        setSubmitting(true);
+        let submissionSucceeded = false;
+        try {
+            const response = await fetch('/api/borrow/submit', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-Token': csrfToken
+                },
+                body: JSON.stringify(payload)
+            });
+            const res = await response.json().catch(() => ({}));
+
+            if (response.ok && res.success) {
+                submissionSucceeded = true;
+                alert(res.msg);
+                clearCart();
+                toggleCartDrawer(false);
+                setTimeout(() => { window.location.reload(); }, 300);
             } else {
-                alert("申请失败: " + res.msg); 
+                alert("申请失败: " + (res.msg || `服务器返回 ${response.status}`));
             }
-        })
-        .catch(err => {
-            console.error("通信总线发生异常中断:", err);
+        } catch (error) {
+            console.error("通信总线发生异常中断:", error);
             alert("通信异常，请检查你的 Flask 服务端是否在线！");
-        });
+        } finally {
+            if (!submissionSucceeded) setSubmitting(false);
+        }
     }
 
     // 页面初始化加载挂载点
